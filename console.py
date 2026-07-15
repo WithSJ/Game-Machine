@@ -12,12 +12,18 @@ Kaise chalaye:
   3. python my_console.py
 
 Controls:
-  Keyboard : Up/Down = navigate, Enter = launch, Esc = exit
-  Gamepad  : D-pad = navigate, A button = launch
+  Keyboard : Up/Down = navigate, Left/Right = tab change, Enter = launch, Esc = exit
+  Gamepad  : D-pad Up/Down = navigate, D-pad Left/Right = tab change, A button = launch
+
+Tabs:
+  RECENT = jo bhi game last me khela (kisi bhi console ka), sabse naya sabse upar
+  PSP / PS2 / PS3 = sirf us console ki games
 """
 
 import os
 import re
+import json
+import time
 import subprocess
 import pygame
 
@@ -78,6 +84,41 @@ def scan_games():
     return games
 
 # ============================================================
+# RECENT GAMES - last played list (JSON file me save hoti hai)
+# ============================================================
+RECENT_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "recent_games.json")
+RECENT_LIMIT = 20  # recent tab me max itni games
+
+def load_recent():
+    try:
+        with open(RECENT_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, list):
+            return data
+    except (OSError, ValueError):
+        pass
+    return []
+
+def save_recent(recent):
+    try:
+        with open(RECENT_FILE, "w", encoding="utf-8") as f:
+            json.dump(recent, f, indent=2)
+    except OSError:
+        pass  # save fail ho jaye to bhi launcher chalta rahe
+
+def add_to_recent(recent, game):
+    # pehle se list me hai to purani entry hatao, phir sabse upar daalo
+    recent[:] = [r for r in recent if r.get("path") != game["path"]]
+    recent.insert(0, {"path": game["path"], "time": time.time()})
+    del recent[RECENT_LIMIT:]
+    save_recent(recent)
+
+def recent_games_list(recent, games):
+    # recent file ki entries ko scan hui games se match karo (same order me)
+    by_path = {g["path"]: g for g in games}
+    return [by_path[r["path"]] for r in recent if r.get("path") in by_path]
+
+# ============================================================
 # STEP 2: GAME LAUNCHING
 # ============================================================
 def launch_game(game):
@@ -100,6 +141,15 @@ CONSOLE_COLORS = {
     "PS3": (255, 170, 60),   # orange
 }
 
+TABS = ["RECENT"] + list(CONSOLES.keys())  # RECENT, PSP, PS2, PS3
+TAB_COLORS = {"RECENT": (255, 90, 200)}    # pink; baaki tabs console color use karenge
+TAB_COLORS.update(CONSOLE_COLORS)
+
+def games_for_tab(tab, games, recent):
+    if tab == "RECENT":
+        return recent_games_list(recent, games)
+    return [g for g in games if g["console"] == tab]
+
 def main():
     pygame.init()
     pygame.joystick.init()
@@ -118,9 +168,29 @@ def main():
     font_small = pygame.font.SysFont("arial", 18)
 
     games = scan_games()
+    recent = load_recent()
+    tab_index = 0  # RECENT tab se shuru
+    tab_games = games_for_tab(TABS[tab_index], games, recent)
     selected = 0
     scroll = 0
-    VISIBLE = 11  # ek screen pe kitni games dikhengi
+    VISIBLE = 10  # ek screen pe kitni games dikhengi (tab bar ke neeche fit hoti hain)
+
+    def switch_tab(direction):
+        nonlocal tab_index, tab_games, selected, scroll
+        tab_index = (tab_index + direction) % len(TABS)
+        tab_games = games_for_tab(TABS[tab_index], games, recent)
+        selected = 0
+        scroll = 0
+
+    def play(game):
+        launch_game(game)
+        add_to_recent(recent, game)
+        # RECENT tab khuli ho to list turant refresh karo
+        nonlocal tab_games, selected, scroll
+        if TABS[tab_index] == "RECENT":
+            tab_games = games_for_tab("RECENT", games, recent)
+            selected = 0
+            scroll = 0
 
     running = True
     while running:
@@ -132,22 +202,30 @@ def main():
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     running = False
-                elif event.key == pygame.K_DOWN and games:
-                    selected = (selected + 1) % len(games)
-                elif event.key == pygame.K_UP and games:
-                    selected = (selected - 1) % len(games)
-                elif event.key == pygame.K_RETURN and games:
-                    launch_game(games[selected])
+                elif event.key == pygame.K_RIGHT:
+                    switch_tab(+1)
+                elif event.key == pygame.K_LEFT:
+                    switch_tab(-1)
+                elif event.key == pygame.K_DOWN and tab_games:
+                    selected = (selected + 1) % len(tab_games)
+                elif event.key == pygame.K_UP and tab_games:
+                    selected = (selected - 1) % len(tab_games)
+                elif event.key == pygame.K_RETURN and tab_games:
+                    play(tab_games[selected])
 
-            elif event.type == pygame.JOYHATMOTION and games:
-                if event.value[1] == -1:
-                    selected = (selected + 1) % len(games)
-                elif event.value[1] == 1:
-                    selected = (selected - 1) % len(games)
+            elif event.type == pygame.JOYHATMOTION:
+                if event.value[0] == 1:
+                    switch_tab(+1)
+                elif event.value[0] == -1:
+                    switch_tab(-1)
+                elif event.value[1] == -1 and tab_games:
+                    selected = (selected + 1) % len(tab_games)
+                elif event.value[1] == 1 and tab_games:
+                    selected = (selected - 1) % len(tab_games)
 
-            elif event.type == pygame.JOYBUTTONDOWN and games:
+            elif event.type == pygame.JOYBUTTONDOWN and tab_games:
                 if event.button == 0:  # A button
-                    launch_game(games[selected])
+                    play(tab_games[selected])
 
         # Scroll window adjust karo taaki selected hamesha dikhe
         if selected < scroll:
@@ -160,17 +238,34 @@ def main():
 
         title = font_big.render("GAME MACHINE", True, (0, 200, 255))
         screen.blit(title, (40, 18))
-        if games:
-            count = font_small.render(f"{len(games)} games  |  {selected + 1}/{len(games)}", True, (110, 110, 110))
-            screen.blit(count, (44, 68))
 
-        if not games:
-            msg = font_item.render("Koi game nahi mili! CONFIG me path check karo.", True, (255, 80, 80))
-            screen.blit(msg, (40, 120))
+        # ---- TAB BAR ----
+        tab_x = 40
+        tab_y = 78
+        for i, tab in enumerate(TABS):
+            tab_color = TAB_COLORS.get(tab, (150, 150, 150))
+            label = font_item.render(tab, True, (255, 255, 255) if i == tab_index else (130, 130, 130))
+            w = label.get_width() + 36
+            if i == tab_index:
+                pygame.draw.rect(screen, (0, 80, 145), (tab_x, tab_y, w, 40), border_radius=8)
+                pygame.draw.rect(screen, tab_color, (tab_x, tab_y + 36, w, 4), border_radius=2)
+            screen.blit(label, (tab_x + 18, tab_y + 5))
+            tab_x += w + 12
+
+        if tab_games:
+            count = font_small.render(f"{len(tab_games)} games  |  {selected + 1}/{len(tab_games)}", True, (110, 110, 110))
+            screen.blit(count, (tab_x + 20, tab_y + 12))
+
+        if not tab_games:
+            if TABS[tab_index] == "RECENT":
+                msg = font_item.render("Abhi tak koi game nahi kheli - koi bhi game launch karo, yahan dikhegi!", True, (255, 170, 60))
+            else:
+                msg = font_item.render("Koi game nahi mili! CONFIG me path check karo.", True, (255, 80, 80))
+            screen.blit(msg, (40, 160))
         else:
-            y = 100
-            for i in range(scroll, min(scroll + VISIBLE, len(games))):
-                game = games[i]
+            y = 140
+            for i in range(scroll, min(scroll + VISIBLE, len(tab_games))):
+                game = tab_games[i]
                 tag_color = CONSOLE_COLORS.get(game["console"], (150, 150, 150))
                 if i == selected:
                     pygame.draw.rect(screen, (0, 80, 145), (30, y - 4, 1180, 46), border_radius=6)
@@ -183,7 +278,7 @@ def main():
                 screen.blit(item, (140, y))
                 y += 50
 
-        hint = font_small.render("Up/Down ya D-pad = navigate  |  Enter ya A = launch  |  Esc = exit", True, (110, 110, 110))
+        hint = font_small.render("Left/Right = tab  |  Up/Down = navigate  |  Enter ya A = launch  |  Esc = exit", True, (110, 110, 110))
         screen.blit(hint, (40, 685))
 
         pygame.display.flip()
