@@ -1,0 +1,6 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Launcher ki recent-games history (har machine ki alag hoti hai)
+recent_games.json
