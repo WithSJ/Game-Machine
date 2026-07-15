@@ -1,6 +1,29 @@
-# Python cache
+# ============================================================
+# GAME MACHINE - .gitignore
+# Rule: sab kuch IGNORE karo, sirf code + docs ALLOW karo
+# (ISOs, BIOS, emulators kabhi GitHub pe nahi jane chahiye!)
+# ============================================================
+
+# Pehle: sab kuch ignore
+*
+
+# Ab sirf ye cheezein allow (! ka matlab = ignore MAT karo)
+!.gitignore
+!console.py
+!my_console.py
+!Game-Machine-Documentation.md
+!README.md
+!covers/
+!covers/**
+
+# Python ka kachra phir bhi block rahe (covers/ ke andar bhi)
 __pycache__/
 *.pyc
+
+# Covers folder me sirf images allow
+covers/**/*.iso
+covers/**/*.cso
+covers/**/*.bin
 
 # Launcher ki recent-games history (har machine ki alag hoti hai)
 recent_games.json
