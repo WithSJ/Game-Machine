@@ -32,16 +32,21 @@ Controls:
              Drag = scroll, EXIT chip = quit
 """
 
+import ctypes
+import ctypes.wintypes
 import json
 import math
 import os
 import random
 import re
 import subprocess
+import threading
 import time
+import urllib.request
 from datetime import date
 
 import pygame
+import pygame.gfxdraw
 
 BASE = r"D:\Game Machine"
 
@@ -201,14 +206,435 @@ def fmt_last(timestamp):
     return date.fromtimestamp(timestamp).strftime("%d %b %Y")
 
 # ============================================================
+# PSP ISO COVER ART EXTRACTION
+# ============================================================
+def parse_dir_record(data, offset):
+    if offset + 33 > len(data):
+        return None
+    length = data[offset]
+    if length == 0 or offset + length > len(data):
+        return None
+    
+    lba = int.from_bytes(data[offset+2 : offset+6], byteorder='little')
+    data_len = int.from_bytes(data[offset+10 : offset+14], byteorder='little')
+    flags = data[offset+25]
+    is_dir = bool(flags & 2)
+    fi_len = data[offset+32]
+    
+    if offset + 33 + fi_len > len(data):
+        return None
+        
+    fi = data[offset+33 : offset+33+fi_len]
+    return {
+        "lba": lba,
+        "length": data_len,
+        "is_dir": is_dir,
+        "name": fi
+    }
+
+
+def read_directory(f, lba, data_len):
+    records = []
+    num_sectors = (data_len + 2047) // 2048
+    for s in range(num_sectors):
+        try:
+            f.seek((lba + s) * 2048)
+            sector_data = f.read(2048)
+            if len(sector_data) < 2048:
+                break
+            offset = 0
+            while offset < 2048:
+                length = sector_data[offset]
+                if length == 0:
+                    break
+                rec = parse_dir_record(sector_data, offset)
+                if rec is None:
+                    break
+                records.append(rec)
+                offset += length
+        except Exception:
+            break
+    return records
+
+
+def extract_iso_images(iso_path, game_dir_name):
+    """
+    Parses a PSP/PS3 ISO file and returns a tuple (icon0_data, pic1_data) as bytes,
+    or (None, None) if not found or error.
+    """
+    try:
+        with open(iso_path, "rb") as f:
+            # Read Primary Volume Descriptor at sector 16
+            f.seek(16 * 2048)
+            pvd = f.read(2048)
+            if len(pvd) < 2048 or pvd[1:6] != b"CD001":
+                return None, None
+                
+            # Root directory record starts at offset 156 of the PVD
+            root_rec = parse_dir_record(pvd, 156)
+            if not root_rec:
+                return None, None
+                
+            # Read Root Directory records
+            root_records = read_directory(f, root_rec['lba'], root_rec['length'])
+            game_rec = None
+            for r in root_records:
+                name = r['name'].decode('utf-8', errors='ignore').split(';')[0].rstrip('.')
+                if name.upper() == game_dir_name.upper():
+                    game_rec = r
+                    break
+                    
+            if not game_rec:
+                return None, None
+                
+            # Read game_dir records
+            game_records = read_directory(f, game_rec['lba'], game_rec['length'])
+            icon0_rec = None
+            pic1_rec = None
+            for r in game_records:
+                name = r['name'].decode('utf-8', errors='ignore').split(';')[0].rstrip('.')
+                name_upper = name.upper()
+                if name_upper == "ICON0.PNG":
+                    icon0_rec = r
+                elif name_upper == "PIC1.PNG":
+                    pic1_rec = r
+                    
+            icon0_data = None
+            pic1_data = None
+            if icon0_rec:
+                f.seek(icon0_rec['lba'] * 2048)
+                icon0_data = f.read(icon0_rec['length'])
+            if pic1_rec:
+                f.seek(pic1_rec['lba'] * 2048)
+                pic1_data = f.read(pic1_rec['length'])
+                
+            return icon0_data, pic1_data
+    except Exception as e:
+        print(f"[ISO Parser] Error reading {iso_path}: {e}")
+        return None, None
+
+
+def get_ps2_serial(iso_path):
+    """
+    Extracts the PlayStation 2 game serial number from SYSTEM.CNF in a PS2 ISO file.
+    Returns format prefix-XXXXX (e.g. SLUS-21134).
+    """
+    try:
+        with open(iso_path, "rb") as f:
+            # Read PVD at sector 16
+            f.seek(16 * 2048)
+            pvd = f.read(2048)
+            if len(pvd) < 2048 or pvd[1:6] != b"CD001":
+                return None
+                
+            # Root directory record at offset 156 in PVD
+            root_rec = parse_dir_record(pvd, 156)
+            if not root_rec:
+                return None
+                
+            # Read Root Directory
+            root_records = read_directory(f, root_rec['lba'], root_rec['length'])
+            system_cnf_rec = None
+            for r in root_records:
+                name = r['name'].decode('utf-8', errors='ignore').split(';')[0].rstrip('.')
+                if name.upper() == "SYSTEM.CNF":
+                    system_cnf_rec = r
+                    break
+            
+            if not system_cnf_rec:
+                return None
+                
+            # Read SYSTEM.CNF file content
+            f.seek(system_cnf_rec['lba'] * 2048)
+            cnf_data = f.read(system_cnf_rec['length']).decode('utf-8', errors='ignore')
+            
+            # Match BOOT2 = cdrom0:\SLUS_211.34;1
+            match = re.search(r'BOOT2\s*=\s*cdrom0:\\\\?([^;]+)', cnf_data, re.IGNORECASE)
+            if not match:
+                match = re.search(r'BOOT2\s*=\s*\S*\\([^;]+)', cnf_data, re.IGNORECASE)
+                
+            if match:
+                raw_filename = match.group(1).strip()
+                clean_match = re.search(r'([A-Z]{4})_(\d{3})\.(\d{2})', raw_filename.upper())
+                if clean_match:
+                    prefix, num1, num2 = clean_match.groups()
+                    return f"{prefix}-{num1}{num2}"
+                else:
+                    return raw_filename.replace('_', '-').replace('.', '')
+    except Exception as e:
+        print(f"[ISO Parser] Error reading PS2 ISO {iso_path}: {e}")
+    return None
+
+
+def background_cover_generator_thread(games, colors, cover_cache):
+    """
+    Unified background thread that:
+    1. Scans PSP/PS3 games and extracts high-resolution 3:4 composite covers from ISOs.
+    2. Scans PS2 games, parses their serial, and downloads cover art from GitHub.
+    """
+    import io
+    
+    # 1. Process PSP games
+    psp_covers_dir = os.path.join(COVERS_DIR, "PSP")
+    try:
+        os.makedirs(psp_covers_dir, exist_ok=True)
+    except Exception as e:
+        print(f"[Cover Gen] Failed to create PSP covers dir: {e}")
+        
+    # 2. Process PS2 games
+    ps2_covers_dir = os.path.join(COVERS_DIR, "PS2")
+    try:
+        os.makedirs(ps2_covers_dir, exist_ok=True)
+    except Exception as e:
+        print(f"[Cover Gen] Failed to create PS2 covers dir: {e}")
+
+    # 3. Process PS3 games
+    ps3_covers_dir = os.path.join(COVERS_DIR, "PS3")
+    try:
+        os.makedirs(ps3_covers_dir, exist_ok=True)
+    except Exception as e:
+        print(f"[Cover Gen] Failed to create PS3 covers dir: {e}")
+
+    for g in games:
+        path = g["path"]
+        
+        # --- PSP Cover Art Generation ---
+        if g["console"] == "PSP" and path.lower().endswith(".iso"):
+            cover_exists = False
+            for ext in (".jpg", ".jpeg", ".png"):
+                cov_path = os.path.join(psp_covers_dir, g["name"] + ext)
+                if os.path.isfile(cov_path):
+                    try:
+                        img_info = pygame.image.load(cov_path)
+                        if img_info.get_width() >= 360:
+                            cover_exists = True
+                            break
+                    except Exception:
+                        pass
+                        
+            if cover_exists:
+                continue
+                
+            try:
+                icon0_data, pic1_data = extract_iso_images(path, "PSP_GAME")
+                if not icon0_data and not pic1_data:
+                    continue
+                    
+                pygame.init()
+                save_w, save_h = 360, 480
+                cover_surf = pygame.Surface((save_w, save_h))
+                cover_surf.fill((17, 20, 27))
+                
+                if pic1_data:
+                    pic_file = io.BytesIO(pic1_data)
+                    pic_img = pygame.image.load(pic_file).convert()
+                    pic_w, pic_h = pic_img.get_size()
+                    target_aspect = save_w / save_h
+                    crop_h = pic_h
+                    crop_w = int(crop_h * target_aspect)
+                    crop_x = (pic_w - crop_w) // 2
+                    crop_y = 0
+                    
+                    cropped_pic = pygame.Surface((crop_w, crop_h))
+                    cropped_pic.blit(pic_img, (0, 0), (crop_x, crop_y, crop_w, crop_h))
+                    
+                    bg_scaled = pygame.transform.smoothscale(cropped_pic, (save_w, save_h))
+                    cover_surf.blit(bg_scaled, (0, 0))
+                    
+                    overlay = pygame.Surface((save_w, save_h), pygame.SRCALPHA)
+                    overlay.fill((10, 12, 18, 120))
+                    cover_surf.blit(overlay, (0, 0))
+                    
+                if icon0_data:
+                    icon_file = io.BytesIO(icon0_data)
+                    icon_img = pygame.image.load(icon_file).convert_alpha()
+                    icon_w, icon_h = icon_img.get_size()
+                    new_icon_w = 300
+                    new_icon_h = int(icon_h * (new_icon_w / icon_w))
+                    
+                    icon_scaled = pygame.transform.smoothscale(icon_img, (new_icon_w, new_icon_h))
+                    icon_x = (save_w - new_icon_w) // 2
+                    icon_y = (save_h - new_icon_h) // 2
+                    cover_surf.blit(icon_scaled, (icon_x, icon_y))
+                    
+                out_path = os.path.join(psp_covers_dir, g["name"] + ".png")
+                pygame.image.save(cover_surf, out_path)
+                cover_cache.pop(path, None)
+                print(f"[Cover Gen] Generated high-res PSP cover for {g['name']}")
+            except Exception as e:
+                print(f"[Cover Gen] Failed to generate PSP cover for {g['name']}: {e}")
+                
+        # --- PS3 Cover Art Generation ---
+        elif g["console"] == "PS3" and path.lower().endswith(".iso"):
+            cover_exists = False
+            for ext in (".jpg", ".jpeg", ".png"):
+                cov_path = os.path.join(ps3_covers_dir, g["name"] + ext)
+                if os.path.isfile(cov_path):
+                    try:
+                        img_info = pygame.image.load(cov_path)
+                        if img_info.get_width() >= 360:
+                            cover_exists = True
+                            break
+                    except Exception:
+                        pass
+                        
+            if cover_exists:
+                continue
+                
+            try:
+                icon0_data, pic1_data = extract_iso_images(path, "PS3_GAME")
+                if not icon0_data and not pic1_data:
+                    continue
+                    
+                pygame.init()
+                save_w, save_h = 360, 480
+                cover_surf = pygame.Surface((save_w, save_h))
+                cover_surf.fill((17, 20, 27))
+                
+                if pic1_data:
+                    pic_file = io.BytesIO(pic1_data)
+                    pic_img = pygame.image.load(pic_file).convert()
+                    pic_w, pic_h = pic_img.get_size()
+                    target_aspect = save_w / save_h
+                    crop_h = pic_h
+                    crop_w = int(crop_h * target_aspect)
+                    crop_x = (pic_w - crop_w) // 2
+                    crop_y = 0
+                    
+                    cropped_pic = pygame.Surface((crop_w, crop_h))
+                    cropped_pic.blit(pic_img, (0, 0), (crop_x, crop_y, crop_w, crop_h))
+                    
+                    bg_scaled = pygame.transform.smoothscale(cropped_pic, (save_w, save_h))
+                    cover_surf.blit(bg_scaled, (0, 0))
+                    
+                    overlay = pygame.Surface((save_w, save_h), pygame.SRCALPHA)
+                    overlay.fill((10, 12, 18, 120))
+                    cover_surf.blit(overlay, (0, 0))
+                    
+                if icon0_data:
+                    icon_file = io.BytesIO(icon0_data)
+                    icon_img = pygame.image.load(icon_file).convert_alpha()
+                    icon_w, icon_h = icon_img.get_size()
+                    new_icon_w = 300
+                    new_icon_h = int(icon_h * (new_icon_w / icon_w))
+                    
+                    icon_scaled = pygame.transform.smoothscale(icon_img, (new_icon_w, new_icon_h))
+                    icon_x = (save_w - new_icon_w) // 2
+                    icon_y = (save_h - new_icon_h) // 2
+                    cover_surf.blit(icon_scaled, (icon_x, icon_y))
+                    
+                out_path = os.path.join(ps3_covers_dir, g["name"] + ".png")
+                pygame.image.save(cover_surf, out_path)
+                cover_cache.pop(path, None)
+                print(f"[Cover Gen] Generated high-res PS3 cover for {g['name']}")
+            except Exception as e:
+                print(f"[Cover Gen] Failed to generate PS3 cover for {g['name']}: {e}")
+                
+        # --- PS2 Cover Art Downloading ---
+        elif g["console"] == "PS2" and path.lower().endswith(".iso"):
+            cover_exists = False
+            for ext in (".jpg", ".jpeg", ".png"):
+                if os.path.isfile(os.path.join(ps2_covers_dir, g["name"] + ext)):
+                    cover_exists = True
+                    break
+                    
+            if cover_exists:
+                continue
+                
+            try:
+                serial = get_ps2_serial(path)
+                if not serial:
+                    continue
+                    
+                url = f"https://raw.githubusercontent.com/xlenore/ps2-covers/main/covers/default/{serial}.jpg"
+                req = urllib.request.Request(
+                    url, 
+                    headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+                )
+                with urllib.request.urlopen(req, timeout=15) as response:
+                    data = response.read()
+                    out_path = os.path.join(ps2_covers_dir, g["name"] + ".jpg")
+                    with open(out_path, "wb") as f:
+                        f.write(data)
+                        
+                cover_cache.pop(path, None)
+                print(f"[Cover Gen] Downloaded PS2 cover for {g['name']} ({serial})")
+            except Exception as e:
+                print(f"[Cover Gen] Failed to download PS2 cover for {g['name']}: {e}")
+
+
+# ============================================================
 # GAME LAUNCHING
 # ============================================================
+def _ppsspp_menu_monitor(proc):
+    """Background watcher: auto-close PPSSPP when the game exits to menu.
+
+    While a game is running the window title looks like:
+        "PPSSPP v1.x.x - Game Title"       (contains " - ")
+    When the user picks 'Exit to Menu' from the pause menu:
+        "PPSSPP v1.x.x"                    (no " - ")
+    We detect that transition and terminate the process so control
+    returns straight to Game Machine.
+    """
+    user32 = ctypes.windll.user32
+    WNDENUMPROC = ctypes.WINFUNCTYPE(
+        ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p
+    )
+
+    time.sleep(3)  # give PPSSPP time to boot the game
+
+    game_seen = False
+
+    while proc.poll() is None:
+        titles = []
+
+        def _cb(hwnd, _lp):
+            pid = ctypes.wintypes.DWORD()
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+            if pid.value != proc.pid:
+                return True
+            length = user32.GetWindowTextLengthW(hwnd)
+            if length > 0:
+                buf = ctypes.create_unicode_buffer(length + 1)
+                user32.GetWindowTextW(hwnd, buf, length + 1)
+                titles.append(buf.value)
+            return True
+
+        try:
+            user32.EnumWindows(WNDENUMPROC(_cb), 0)
+        except OSError:
+            pass
+
+        game_running = any(" - " in t for t in titles)
+
+        if game_running:
+            game_seen = True
+        elif game_seen and titles:
+            # Game was running, now at menu → close PPSSPP
+            proc.terminate()
+            break
+
+        time.sleep(0.5)
+
+
 def launch_game(game, consoles):
     cfg = consoles[game["console"]]
     command = [cfg["emulator"]] + cfg["args"] + [game["path"]]
     start = time.time()
     # cwd = the emulator's own folder so portable mode works correctly
-    subprocess.run(command, cwd=os.path.dirname(cfg["emulator"]))
+    proc = subprocess.Popen(
+        command,
+        cwd=os.path.dirname(cfg["emulator"]),
+        creationflags=subprocess.DETACHED_PROCESS,
+    )
+
+    # Auto-close PPSSPP when game exits to its menu (pause menu still works)
+    if game["console"] == "PSP":
+        threading.Thread(
+            target=_ppsspp_menu_monitor, args=(proc,), daemon=True
+        ).start()
+
+    proc.wait()
     elapsed = int(time.time() - start)
     # BUG FIX: buttons pressed while the game was running pile up in our
     # event queue - the stale "A press" used to relaunch the same game
@@ -296,10 +722,22 @@ class GameMachine:
         pygame.joystick.init()
         pygame.key.set_repeat(NAV_REPEAT_DELAY, NAV_REPEAT_RATE)
 
-        self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
+        # Detect native desktop resolution
+        info = pygame.display.Info()
+        global SCREEN_W, SCREEN_H, HERO_RECT, GRID_RECT, FOOTER_Y, COLS
+        SCREEN_W = info.current_w
+        SCREEN_H = info.current_h
+
+        # Recalculate layout coordinates based on the detected screen resolution
+        HERO_RECT = pygame.Rect(PAD_X, 122, int(SCREEN_W - 2 * PAD_X), 172)
+        FOOTER_Y = SCREEN_H - 52
+        grid_height = FOOTER_Y - 310 - 6
+        GRID_RECT = pygame.Rect(PAD_X, 310, int(SCREEN_W - 2 * PAD_X), int(grid_height))
+
+        self.fullscreen = True
+        self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H), pygame.FULLSCREEN)
         pygame.display.set_caption("GAME MACHINE")
         self.clock = pygame.time.Clock()
-        self.fullscreen = False
 
         self.joystick = None
         if pygame.joystick.get_count() > 0:
@@ -334,6 +772,10 @@ class GameMachine:
         self.colors = build_console_colors(self.consoles)
         self.games = scan_games(self.consoles)
         self.playdata = load_playdata()
+        
+        # Load user settings or set defaults
+        self.settings = self.playdata.setdefault("__settings__", {"size": "medium"})
+        self.update_sizes()
 
         present = [c for c in self.consoles if any(g["console"] == c for g in self.games)]
         self.tabs = [("RECENTS", REC_COLOR)] + [(c, self.colors[c]) for c in present]
@@ -381,6 +823,38 @@ class GameMachine:
         } for _ in range(90)]
         self._overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
 
+        # Start background thread to extract PSP & PS2 cover arts
+        threading.Thread(
+            target=background_cover_generator_thread,
+            args=(self.games, self.colors, self._cover_cache),
+            daemon=True
+        ).start()
+
+    def update_sizes(self):
+        size = self.settings.get("size", "medium")
+        if size == "small":
+            self.cols = 12
+        elif size == "large":
+            self.cols = 5
+        else: # medium
+            self.cols = 8
+            
+        self.gap = 14
+        self.card_w = ((GRID_RECT.w + self.gap) // self.cols) - self.gap
+        self.cover_h = int(self.card_w * 4 // 3)
+        self.card_h = self.cover_h + 70
+        
+        global COLS
+        COLS = self.cols
+        
+        # Clear cover cache so everything gets reloaded at the new resolution
+        if hasattr(self, "_cover_cache"):
+            self._cover_cache.clear()
+        if hasattr(self, "_placeholder_cache"):
+            self._placeholder_cache.clear()
+            
+        self.ensure = True
+
     # ---------------- data helpers ----------------
     def _recents(self):
         played = [g for g in self.games if self.playdata.get(g["path"], {}).get("last")]
@@ -421,7 +895,7 @@ class GameMachine:
         L = self.current_list()
         if not L:
             return
-        new = self.sel + dx + dy * COLS
+        new = self.sel + dx + dy * self.cols
         self.sel = max(0, min(new, len(L) - 1))
         self.ensure = True
 
@@ -456,16 +930,31 @@ class GameMachine:
         save_playdata(self.playdata)
         self.pad_state = {"x": {"dir": 0, "next": 0}, "y": {"dir": 0, "next": 0}}
         self.pop(f"Welcome back · {fmt_dur(elapsed)} session")
+        # Ignore input for 1 second to prevent stale key/button presses from triggering actions
+        self.ignore_input_until = pygame.time.get_ticks() + 1000
 
     def toggle_fullscreen(self):
         self.fullscreen = not self.fullscreen
-        flags = pygame.FULLSCREEN | pygame.SCALED if self.fullscreen else 0
+        flags = pygame.FULLSCREEN if self.fullscreen else 0
         self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H), flags)
 
     def click(self, pos):
         """Shared mouse-click / touch-tap handler."""
         if self.exit_rect.collidepoint(pos):
             self.running = False
+            return
+        if hasattr(self, "size_rect") and self.size_rect.collidepoint(pos):
+            current = self.settings.get("size", "medium")
+            if current == "small":
+                new_size = "medium"
+            elif current == "medium":
+                new_size = "large"
+            else:
+                new_size = "small"
+            self.settings["size"] = new_size
+            save_playdata(self.playdata)
+            self.update_sizes()
+            self.pop(f"Grid size: {new_size.upper()}")
             return
         for i, r in self.tab_rects:
             if r.collidepoint(pos):
@@ -489,9 +978,14 @@ class GameMachine:
     def handle_event(self, e):
         if e.type == pygame.QUIT:
             self.running = False
+            return
+
+        # Ignore input if we just came back from a game
+        if pygame.time.get_ticks() < getattr(self, "ignore_input_until", 0):
+            return
 
         # ----- Keyboard -----
-        elif e.type == pygame.KEYDOWN:
+        if e.type == pygame.KEYDOWN:
             k = e.key
             if k == pygame.K_ESCAPE:
                 self.running = False
@@ -525,6 +1019,13 @@ class GameMachine:
                 self.random_pick()
             elif k == pygame.K_F11:
                 self.toggle_fullscreen()
+            elif k == pygame.K_s:
+                current = self.settings.get("size", "medium")
+                new_size = "medium" if current == "small" else ("large" if current == "medium" else "small")
+                self.settings["size"] = new_size
+                save_playdata(self.playdata)
+                self.update_sizes()
+                self.pop(f"Grid size: {new_size.upper()}")
 
         # ----- Gamepad buttons -----
         elif e.type == pygame.JOYBUTTONDOWN:
@@ -625,12 +1126,12 @@ class GameMachine:
         L = self.current_list()
         if L:
             self.sel = min(self.sel, len(L) - 1)
-        rows = (len(L) + COLS - 1) // COLS
-        max_scroll = max(0, rows * (CARD_H + GAP) - GAP - GRID_RECT.h)
+        rows = (len(L) + self.cols - 1) // self.cols
+        max_scroll = max(0, rows * (self.card_h + self.gap) - self.gap - GRID_RECT.h)
 
         if self.ensure and L:
-            row_top = (self.sel // COLS) * (CARD_H + GAP)
-            row_bot = row_top + CARD_H
+            row_top = (self.sel // self.cols) * (self.card_h + self.gap)
+            row_bot = row_top + self.card_h
             if row_top < self.scroll_t:
                 self.scroll_t = row_top
             elif row_bot > self.scroll_t + GRID_RECT.h:
@@ -698,7 +1199,7 @@ class GameMachine:
                 if os.path.isfile(p):
                     try:
                         img = pygame.image.load(p).convert()
-                        surf = pygame.transform.smoothscale(img, (CARD_W, COVER_H))
+                        surf = pygame.transform.smoothscale(img, (self.card_w, self.cover_h))
                     except pygame.error:
                         surf = None
                     break
@@ -706,17 +1207,17 @@ class GameMachine:
         return self._cover_cache[path]
 
     def _placeholder(self, accent, active):
-        key = (accent, active)
+        key = (accent, active, self.card_w, self.cover_h)
         if key not in self._placeholder_cache:
-            s = pygame.Surface((CARD_W, COVER_H), pygame.SRCALPHA)
+            s = pygame.Surface((self.card_w, self.cover_h), pygame.SRCALPHA)
             stripe = accent + ((36,) if active else (16,))
-            for i in range(-COVER_H, CARD_W + COVER_H, 24):
-                pygame.draw.line(s, stripe, (i, COVER_H), (i + COVER_H, 0), 12)
+            for i in range(-self.cover_h, self.card_w + self.cover_h, 24):
+                pygame.draw.line(s, stripe, (i, self.cover_h), (i + self.cover_h, 0), 12)
             label = self.f_mono.render("COVER ART", True,
                                        accent if active else (58, 62, 72))
             if not active:
                 label.set_alpha(255)
-            s.blit(label, label.get_rect(center=(CARD_W // 2, COVER_H // 2)))
+            s.blit(label, label.get_rect(center=(self.card_w // 2, self.cover_h // 2)))
             self._placeholder_cache[key] = s
         return self._placeholder_cache[key]
 
@@ -731,16 +1232,20 @@ class GameMachine:
         return x
 
     def _parallelogram(self, rect, color, cut=9, width=0):
-        pts = [(rect.x + cut, rect.y), (rect.right, rect.y),
-               (rect.right - cut, rect.bottom), (rect.x, rect.bottom)]
-        pygame.draw.polygon(self.screen, color, pts, width)
+        pts = [(int(rect.x + cut), int(rect.y)), (int(rect.right), int(rect.y)),
+               (int(rect.right - cut), int(rect.bottom)), (int(rect.x), int(rect.bottom))]
+        if width == 0:
+            pygame.gfxdraw.filled_polygon(self.screen, pts, color)
+            pygame.gfxdraw.aapolygon(self.screen, pts, color)
+        else:
+            pygame.gfxdraw.aapolygon(self.screen, pts, color)
 
     def _key_hint(self, x, y, letter, color, text):
-        pygame.draw.circle(self.screen, color, (x + 9, y + 9), 9, 1)
+        pygame.gfxdraw.aacircle(self.screen, int(x + 9), int(y + 9), 9, color)
         glyph = self.f_mono.render(letter, True, color)
-        self.screen.blit(glyph, glyph.get_rect(center=(x + 9, y + 9)))
+        self.screen.blit(glyph, glyph.get_rect(center=(int(x + 9), int(y + 9))))
         label = self.f_hint.render(text, True, COL_DIM)
-        self.screen.blit(label, (x + 24, y + 1))
+        self.screen.blit(label, (int(x + 24), int(y + 1)))
         return x + 24 + label.get_width() + 24
 
     def _wrap2(self, text, font, maxw):
@@ -801,13 +1306,14 @@ class GameMachine:
         scr.blit(self._overlay, (0, 0))
 
         # ----- Header -----
-        pygame.draw.polygon(scr, (240, 112, 60),
-                            [(PAD_X + 7, 26), (PAD_X + 14, 33), (PAD_X + 7, 40), (PAD_X, 33)])
+        logo_pts = [(PAD_X + 7, 26), (PAD_X + 14, 33), (PAD_X + 7, 40), (PAD_X, 33)]
+        pygame.gfxdraw.filled_polygon(scr, logo_pts, (240, 112, 60))
+        pygame.gfxdraw.aapolygon(scr, logo_pts, (240, 112, 60))
         x_end = self._spaced_text(self.f_logo, "GAME MACHINE", COL_TEXT, (PAD_X + 26, 20), 5)
         sub = self.f_sub.render("v4 · EMULATOR FRONTEND", True, COL_DIMMER)
         scr.blit(sub, (x_end + 12, 30))
 
-        self.exit_rect = pygame.Rect(SCREEN_W - PAD_X - 58, 20, 58, 28)
+        self.exit_rect = pygame.Rect(int(SCREEN_W - PAD_X - 58), 20, 58, 28)
         pygame.draw.rect(scr, (60, 20, 25), self.exit_rect, border_radius=6)
         pygame.draw.rect(scr, (200, 70, 80), self.exit_rect, 1, border_radius=6)
         ex = self.f_sub.render("EXIT", True, (255, 120, 130))
@@ -820,6 +1326,14 @@ class GameMachine:
         pad_col = COL_PAD_OK if self.joystick else COL_DIMMER
         pad_s = self.f_small.render(pad_txt, True, pad_col)
         scr.blit(pad_s, (cx - 18 - pad_s.get_width(), 27))
+
+        # Size settings chip
+        size_txt = f"SIZE: {self.settings['size'].upper()}"
+        size_s = self.f_small.render(size_txt, True, COL_TEXT)
+        self.size_rect = pygame.Rect(cx - 36 - pad_s.get_width() - (size_s.get_width() + 24), 20, size_s.get_width() + 24, 28)
+        pygame.draw.rect(scr, COL_PANEL2, self.size_rect, border_radius=6)
+        pygame.draw.rect(scr, COL_CARD_BORDER, self.size_rect, 1, border_radius=6)
+        scr.blit(size_s, size_s.get_rect(center=self.size_rect.center))
 
         # ----- Tabs -----
         ty = 76
@@ -885,8 +1399,9 @@ class GameMachine:
             self._parallelogram(self.play_rect, accent, cut=8)
             cy = self.play_rect.centery
             tri_x = self.play_rect.x + 24
-            pygame.draw.polygon(scr, (11, 13, 19),
-                                [(tri_x, cy - 6), (tri_x, cy + 6), (tri_x + 10, cy)])
+            tri_pts = [(tri_x, cy - 6), (tri_x, cy + 6), (tri_x + 10, cy)]
+            pygame.gfxdraw.filled_polygon(scr, tri_pts, (11, 13, 19))
+            pygame.gfxdraw.aapolygon(scr, tri_pts, (11, 13, 19))
             scr.blit(play_label, (tri_x + 18, cy - play_label.get_height() // 2))
 
             det_label = self.f_btn.render("DETAILS", True, (185, 188, 194))
@@ -906,26 +1421,26 @@ class GameMachine:
         # ----- Cover grid -----
         scr.set_clip(GRID_RECT)
         for i, g in enumerate(L):
-            row, col = divmod(i, COLS)
-            gx = GRID_RECT.x + col * (CARD_W + GAP)
-            gy = GRID_RECT.y + row * (CARD_H + GAP) - int(self.scroll) + anim_off
-            if gy + CARD_H < GRID_RECT.y or gy > GRID_RECT.bottom:
+            row, col = divmod(i, self.cols)
+            gx = GRID_RECT.x + col * (self.card_w + self.gap)
+            gy = GRID_RECT.y + row * (self.card_h + self.gap) - int(self.scroll) + anim_off
+            if gy + self.card_h < GRID_RECT.y or gy > GRID_RECT.bottom:
                 continue
             on = i == sel
             c = self.colors.get(g["console"], (150, 150, 150))
             lift = -6 if on else 0
-            card = pygame.Rect(gx, gy + lift, CARD_W, CARD_H)
+            card = pygame.Rect(gx, gy + lift, self.card_w, self.card_h)
 
             pygame.draw.rect(scr, COL_PANEL, card, border_radius=10)
             cover = self._cover_for(g)
-            cov_area = pygame.Rect(card.x, card.y, CARD_W, COVER_H)
+            cov_area = pygame.Rect(card.x, card.y, self.card_w, self.cover_h)
             prev_clip = scr.get_clip()
             scr.set_clip(prev_clip.clip(cov_area) if prev_clip else cov_area)
             scr.blit(cover if cover else self._placeholder(c, on), cov_area.topleft)
             scr.set_clip(prev_clip)
 
-            ty2 = card.y + COVER_H + 9
-            for line in self._wrap2(g["name"], self.f_card, CARD_W - 20):
+            ty2 = card.y + self.cover_h + 9
+            for line in self._wrap2(g["name"], self.f_card, self.card_w - 20):
                 scr.blit(self.f_card.render(line, True, (231, 233, 238) if on else (185, 188, 195)),
                          (card.x + 10, ty2))
                 ty2 += 17
@@ -941,7 +1456,7 @@ class GameMachine:
             border_c = mix(COL_BG, c, 0.8) if on else COL_CARD_BORDER
             pygame.draw.rect(scr, border_c, card, 1, border_radius=10)
             if on:
-                pygame.draw.rect(scr, c, (card.x, card.y, CARD_W, 2))
+                pygame.draw.rect(scr, c, (card.x, card.y, self.card_w, 2))
             # clip the hit-test rect to the grid so half-hidden cards
             # can't be clicked through the hero banner or footer
             self.card_rects.append((i, card.clip(GRID_RECT)))
@@ -955,10 +1470,11 @@ class GameMachine:
             True, COL_DIMMER)
         scr.blit(status, (PAD_X, FOOTER_Y + 18))
 
-        hx = SCREEN_W - PAD_X - 560
+        hx = SCREEN_W - PAD_X - 660
         hx = self._key_hint(hx, FOOTER_Y + 14, "A", COL_PAD_OK, "Play")
         hx = self._key_hint(hx, FOOTER_Y + 14, "B", COL_BTN_B, "Recents")
         hx = self._key_hint(hx, FOOTER_Y + 14, "Y", COL_BTN_Y, "Random")
+        hx = self._key_hint(hx, FOOTER_Y + 14, "S", COL_TEXT, "Size")
         pill = pygame.Rect(hx, FOOTER_Y + 14, 44, 18)
         pygame.draw.rect(scr, COL_DIM, pill, 1, border_radius=9)
         pl = self.f_mono.render("L1 R1", True, (185, 188, 194))
@@ -971,8 +1487,8 @@ class GameMachine:
             tp = min(1.0, (now - (self.toast_until - TOAST_MS)) / 250)
             surf = self.f_small.render(self.toast, True, (231, 233, 238))
             tw, th = surf.get_width() + 44, 38
-            tr = pygame.Rect((SCREEN_W - tw) // 2,
-                             SCREEN_H - 88 + int(12 * (1 - ease_out(tp))), tw, th)
+            tr = pygame.Rect(int((SCREEN_W - tw) // 2),
+                             int(SCREEN_H - 88 + int(12 * (1 - ease_out(tp)))), int(tw), int(th))
             pygame.draw.rect(scr, COL_TOAST_BG, tr, border_radius=6)
             pygame.draw.rect(scr, (44, 47, 56), tr, 1, border_radius=6)
             pygame.draw.rect(scr, COL_TOAST_EDGE, (tr.x, tr.y, 2, th))
