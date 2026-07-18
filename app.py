@@ -109,20 +109,37 @@ class GameMachine:
         self.f_popup_btn = FH(15, True)
 
         # Data - scan games and load playtime
-        self._draw_splash("Scanning games...")
-        pygame.display.flip()
-
-        self.consoles = discover_consoles()
-        self.colors = build_console_colors(self.consoles)
-        self.games = scan_games(self.consoles)
         self.playdata = load_playdata()
-        
-        # Load user settings or set defaults
         self.settings = self.playdata.setdefault("__settings__", {"size": "medium"})
+        self.folders = self.settings.setdefault("folders", [])
+        self.custom_consoles = self.settings.setdefault("custom_consoles", {})
         self.update_sizes()
 
-        present = [c for c in self.consoles if any(g["console"] == c for g in self.games)]
-        self.tabs = [("RECENTS", REC_COLOR)] + [(c, self.colors[c]) for c in present]
+        # Check if setup is needed
+        self.needs_setup = not self.folders and not self.custom_consoles
+
+        if self.needs_setup:
+            self._draw_splash("Starting Setup...")
+            pygame.display.flip()
+            self.consoles = {}
+            self.colors = build_console_colors(self.consoles)
+            self.games = []
+            self.tabs = [("RECENTS", REC_COLOR)]
+            
+            # Setup screen navigation states
+            self.setup_sel = 0
+            self.setup_help_active = False
+            self.setup_delete_rects = []
+            self.setup_menu_rects = []
+        else:
+            self._draw_splash("Scanning games...")
+            pygame.display.flip()
+            self.consoles = discover_consoles(self.folders, self.custom_consoles)
+            self.colors = build_console_colors(self.consoles)
+            self.games = scan_games(self.consoles)
+            
+            present = [c for c in self.consoles if any(g["console"] == c for g in self.games)]
+            self.tabs = [("RECENTS", REC_COLOR)] + [(c, self.colors[c]) for c in present]
 
         # UI state
         self.tab = 0 if self._recents() else (1 if len(self.tabs) > 1 else 0)
@@ -204,12 +221,13 @@ class GameMachine:
         } for _ in range(90)]
         self._overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
 
-        # Start background thread to extract PSP & PS2 cover arts
-        threading.Thread(
-            target=background_cover_generator_thread,
-            args=(self.games, self.colors, self._cover_cache),
-            daemon=True
-        ).start()
+        # Start background thread to extract PSP & PS2 cover arts only if setup is not needed
+        if not self.needs_setup:
+            threading.Thread(
+                target=background_cover_generator_thread,
+                args=(self.games, self.colors, self._cover_cache),
+                daemon=True
+            ).start()
 
     def _draw_splash(self, status_text="Loading..."):
         draw_splash(self.screen, status_text)
@@ -469,6 +487,13 @@ class GameMachine:
         if pygame.time.get_ticks() < getattr(self, "ignore_input_until", 0):
             return
 
+        if getattr(self, "needs_setup", False):
+            if e.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            self.handle_setup_event(e)
+            return
+
         if e.type == pygame.QUIT:
             self._show_exit_menu()
             return
@@ -640,6 +665,13 @@ class GameMachine:
 
     # ---------------- drawing ----------------
     def draw(self, now):
+        if getattr(self, "needs_setup", False):
+            from ui.draw_setup import draw_setup
+            draw_setup(self, now)
+            from ui.draw_toast import draw_toast
+            draw_toast(self, now)
+            return
+
         L = gm_list = self.current_list()
         sel = min(self.sel, len(gm_list) - 1) if gm_list else 0
         cur = gm_list[sel] if gm_list else None
@@ -678,6 +710,115 @@ class GameMachine:
         draw_toast(self, now)
         draw_popup(self, now)
         draw_exit_menu(self, now)
+
+    def handle_setup_event(self, e):
+        # Handle help overlay dismiss
+        if getattr(self, "setup_help_active", False):
+            if e.type == pygame.KEYDOWN:
+                self.setup_help_active = False
+            elif e.type == pygame.JOYBUTTONDOWN:
+                self.setup_help_active = False
+            elif e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
+                self.setup_help_active = False
+            return
+
+        # Keyboard navigation
+        if e.type == pygame.KEYDOWN:
+            if e.key in (pygame.K_UP, pygame.K_w):
+                self.setup_sel = (self.setup_sel - 1) % 5
+            elif e.key in (pygame.K_DOWN, pygame.K_s):
+                self.setup_sel = (self.setup_sel + 1) % 5
+            elif e.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
+                self._setup_confirm_action()
+            elif e.key == pygame.K_ESCAPE:
+                pygame.quit()
+                sys.exit()
+
+        # Gamepad navigation
+        elif e.type == pygame.JOYBUTTONDOWN:
+            if e.button == 0:  # A button
+                self._setup_confirm_action()
+            elif e.button == 1:  # B button
+                pygame.quit()
+                sys.exit()
+
+        # Mouse Motion / Hover
+        elif e.type == pygame.MOUSEMOTION:
+            for idx, label, enabled, rect in getattr(self, "setup_menu_rects", []):
+                if rect.collidepoint(e.pos) and enabled:
+                    self.setup_sel = idx
+
+        # Mouse Click
+        elif e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
+            # Check delete buttons on the left
+            for idx, kind, val, rect in getattr(self, "setup_delete_rects", []):
+                if rect.collidepoint(e.pos):
+                    if kind == "folder":
+                        if val in self.folders:
+                            self.folders.remove(val)
+                            self.toast = f"Removed Folder: {os.path.basename(val)}"
+                            self.toast_until = pygame.time.get_ticks() + 2000
+                    elif kind == "console":
+                        cname = val.split(":")[0].strip()
+                        if cname in self.custom_consoles:
+                            del self.custom_consoles[cname]
+                            self.toast = f"Removed Console: {cname}"
+                            self.toast_until = pygame.time.get_ticks() + 2000
+                    return
+
+            # Check menu buttons on the right
+            for idx, label, enabled, rect in getattr(self, "setup_menu_rects", []):
+                if rect.collidepoint(e.pos) and enabled:
+                    self.setup_sel = idx
+                    self._setup_confirm_action()
+                    return
+
+    def _setup_confirm_action(self):
+        from ui.draw_setup import add_gm_folder_dialog, add_custom_console_dialog
+        if self.setup_sel == 0:
+            add_gm_folder_dialog(self)
+        elif self.setup_sel == 1:
+            add_custom_console_dialog(self)
+        elif self.setup_sel == 2:
+            self.setup_help_active = True
+        elif self.setup_sel == 3:
+            if self.folders or self.custom_consoles:
+                self.finish_setup()
+        elif self.setup_sel == 4:
+            pygame.quit()
+            sys.exit()
+
+    def finish_setup(self):
+        self.settings["folders"] = self.folders
+        self.settings["custom_consoles"] = self.custom_consoles
+        save_playdata(self.playdata)
+
+        # Trigger dynamic scan and rebuild configs
+        self.consoles = discover_consoles(self.folders, self.custom_consoles)
+        self.colors = build_console_colors(self.consoles)
+        self.games = scan_games(self.consoles)
+
+        # Rebuild tabs and display elements
+        present = [c for c in self.consoles if any(g["console"] == c for g in self.games)]
+        self.tabs = [("RECENTS", REC_COLOR)] + [(c, self.colors[c]) for c in present]
+
+        self.tab = 0 if self._recents() else (1 if len(self.tabs) > 1 else 0)
+        self.sel = 0
+        self.scroll = 0.0
+        self.scroll_t = 0.0
+        self.ensure = True
+        self.switch_ms = pygame.time.get_ticks()
+
+        # Start background thread to extract PSP & PS2 cover arts now that games are loaded
+        threading.Thread(
+            target=background_cover_generator_thread,
+            args=(self.games, self.colors, self._cover_cache),
+            daemon=True
+        ).start()
+
+        self.needs_setup = False
+        self.toast = "Setup Complete!"
+        self.toast_until = pygame.time.get_ticks() + 2000
 
     def run(self):
         while self.running:
