@@ -62,8 +62,8 @@ CONSOLES = {
 DEFAULT_EXTENSIONS = [".iso", ".cso", ".chd", ".bin"]
 
 # Cover art: covers\<CONSOLE>\<Clean Game Name>.jpg / .png
-# Set covers directory inside the project root for full portability
-COVERS_DIR = os.path.join(PROJECT_DIR, "covers")
+# Set covers directory inside the primary Game Machine folder (BASE)
+COVERS_DIR = os.path.join(BASE, "covers")
 
 # Auto-start registry key
 AUTOSTART_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
