@@ -3,7 +3,10 @@ GAME MACHINE - Exit/Power menu drawing.
 """
 import pygame
 
-from ui.theme import SCREEN_W, SCREEN_H, COL_BG, COL_PANEL, COL_PANEL2, COL_TEXT, COL_DIM, COL_DIMMER, COL_CARD_BORDER, mix, ease_out
+from ui.theme import (
+    SCREEN_W, SCREEN_H, COL_BG, COL_PANEL, COL_PANEL2, COL_TEXT, COL_DIM,
+    COL_DIMMER, COL_CARD_BORDER, COL_BTN_B, mix, ease_out
+)
 
 
 def draw_exit_menu(gm, now):
@@ -34,7 +37,19 @@ def draw_exit_menu(gm, now):
         pygame.draw.rect(scr, accent, (popup_r.x, popup_r.y, pw, 3), border_radius=14)
         pygame.draw.rect(scr, mix(COL_BG, accent, 0.4), popup_r, 1, border_radius=14)
 
-        # Title
+        # Close [X] button (top-right) - lets mouse/touch users dismiss the menu
+        close_size = 26
+        close_r = pygame.Rect(popup_r.right - close_size - 14, popup_r.y + 14, close_size, close_size)
+        gm.exit_menu_close_rect = close_r
+        m_pos = pygame.mouse.get_pos()
+        close_hover = close_r.collidepoint(m_pos)
+        close_bg = mix(COL_BG, COL_BTN_B, 0.15) if close_hover else COL_PANEL2
+        pygame.draw.rect(scr, close_bg, close_r, border_radius=6)
+        pygame.draw.rect(scr, COL_BTN_B if close_hover else COL_CARD_BORDER, close_r, 1, border_radius=6)
+        x_s = gm.f_popup_btn.render("X", True, COL_BTN_B if close_hover else COL_DIM)
+        scr.blit(x_s, x_s.get_rect(center=close_r.center))
+
+        # Title (centered, leaves room for the close button on the right)
         title_s = gm.f_popup_title.render("POWER MENU", True, accent)
         scr.blit(title_s, (popup_r.x + (pw - title_s.get_width()) // 2, popup_r.y + 20))
 
@@ -65,12 +80,17 @@ def draw_exit_menu(gm, now):
                 pygame.draw.rect(scr, COL_CARD_BORDER, r, 1, border_radius=8)
 
             text_col = col if on else COL_DIM
-            # Icon
+            # Icon - render first and measure its width so the label can be
+            # placed after it with consistent padding. (Previously the label
+            # was hardcoded to r.x+42, which overlapped wider ASCII tags
+            # like "[LOCK]".)
             icon_s = gm.f_popup_btn.render(icon_ch, True, text_col)
-            scr.blit(icon_s, (r.x + 16, r.centery - icon_s.get_height() // 2))
-            # Label
+            icon_x = r.x + 16
+            scr.blit(icon_s, (icon_x, r.centery - icon_s.get_height() // 2))
+            # Label - offset by actual icon width + 14px padding
             lbl_s = gm.f_popup_btn.render(label, True, (231, 233, 238) if on else COL_DIM)
-            scr.blit(lbl_s, (r.x + 42, r.centery - lbl_s.get_height() // 2))
+            lbl_x = icon_x + icon_s.get_width() + 14
+            scr.blit(lbl_s, (lbl_x, r.centery - lbl_s.get_height() // 2))
 
             oy += opt_h + 8
 
@@ -104,7 +124,7 @@ def draw_exit_menu(gm, now):
         scr.blit(on_off, (sw_x - on_off.get_width() - 8, tog_y + 5))
 
         # Hint text
-        hint = gm.f_mono.render("▲▼ Navigate  A=Confirm  B/Esc=Cancel  Y=Auto-Start", True, COL_DIMMER)
+        hint = gm.f_mono.render("▲▼ Navigate  A=Confirm  B/Esc=Cancel  Y=Auto-Start  [X]=Close", True, COL_DIMMER)
         scr.blit(hint, (popup_r.x + (pw - hint.get_width()) // 2, popup_r.bottom - 22))
     else:
         pygame.draw.rect(scr, COL_PANEL, popup_r, border_radius=int(14 * scale))

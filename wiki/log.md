@@ -2,6 +2,19 @@
 
 This file is a chronological log of operations performed on the Wiki (latest logs on top).
 
+## [2026-07-18] bugfix | Power Menu: fix icon/label overlap and add mouse close button
+Two issues in the Power Menu (`ui/draw_exit_menu.py`):
+
+1. **Icon overlapping label**: Each option row hardcoded the label start to `r.x + 42`, which was sized for the old single-glyph Unicode icons (~15px wide). The recent ASCII replacements (`[X]`, `[LOCK]`, `[RST]`, `[OFF]`) at `f_popup_btn` (15pt bold) render up to ~60px wide, so the icon crashed into the label. Fix: render the icon first, measure its width, then place the label at `icon_x + icon_w + 14` so the gap is always 14px regardless of icon width.
+
+2. **No mouse/touch way to dismiss**: The Power Menu could only be closed with `Esc` or the gamepad B button. Added a close `[X]` button at the top-right of the popup (stored on `gm.exit_menu_close_rect`, initialized in `__init__` for safety). Mouse clicks and finger taps on this rect call `_close_exit_menu()`. Updated the hint footer to mention `[X]=Close`.
+
+Wired up the new rect in `app.py`:
+- Added `self.exit_menu_close_rect = pygame.Rect(0, 0, 0, 0)` to `__init__`.
+- Inserted close-rect checks at the top of both the `MOUSEBUTTONDOWN` and `FINGERUP` branches of the exit-menu input handler so the close button is tested before the option rects.
+
+Verified: `python -m py_compile` clean; hint width (366px) fits inside the 420px panel.
+
 ## [2026-07-18] config | Enforce mandatory wiki-update + commit + push workflow
 Rewrote `.agents/AGENTS.md` to make the change workflow explicit and mandatory for every modification - no matter how small. Previously the rules for wiki updates and git commit/push were stated separately and were easy to skip on tiny edits. The new "Mandatory Change Workflow" section consolidates them into a single ordered checklist that applies to every file touched:
 

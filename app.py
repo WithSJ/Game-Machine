@@ -175,6 +175,7 @@ class GameMachine:
         self.exit_menu_anim_start = 0
         self.exit_menu_option_rects = []
         self.exit_menu_autostart_rect = pygame.Rect(0, 0, 0, 0)
+        self.exit_menu_close_rect = pygame.Rect(0, 0, 0, 0)
         self.auto_start = is_auto_start_enabled()
 
         # Handle restart flag cleanup on boot
@@ -605,6 +606,10 @@ class GameMachine:
                     self._toggle_auto_start()
             elif e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
                 if not getattr(e, "touch", False):
+                    # [X] close button dismisses the power menu
+                    if self.exit_menu_close_rect.collidepoint(e.pos):
+                        self._close_exit_menu()
+                        return
                     for idx, rect in self.exit_menu_option_rects:
                         if rect.collidepoint(e.pos):
                             self.exit_menu_sel = idx
@@ -616,6 +621,10 @@ class GameMachine:
                 if self.touch_start is not None and not getattr(self, 'touch_moved', False):
                     w, h = self.screen.get_size()
                     pos = (e.x * w, e.y * h)
+                    # [X] close button dismisses the power menu
+                    if self.exit_menu_close_rect.collidepoint(pos):
+                        self._close_exit_menu()
+                        return
                     for idx, rect in self.exit_menu_option_rects:
                         if rect.collidepoint(pos):
                             self.exit_menu_sel = idx
