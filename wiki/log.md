@@ -2,6 +2,44 @@
 
 This file is a chronological log of operations performed on the Wiki (latest logs on top).
 
+## [2026-07-18] feature | Settings panel with 5 tabs (Folders/Consoles/Display/System/About)
+Added a comprehensive Settings button to the header and a tabbed settings modal that consolidates all configuration and system actions in one place. Previously, folder management and custom console setup were only available on the first-run Setup Wizard, grid size was a header button, auto-start was buried in the Exit menu, and power options were only in the Exit menu.
+
+### New file: `ui/draw_settings.py`
+- `TABS = ["FOLDERS", "CONSOLES", "DISPLAY", "SYSTEM", "ABOUT"]`
+- `draw_settings(gm, now)` draws a 760x560 modal popup with a tab bar, content area, close [X] button, and footer hint.
+- `_draw_option_row()` — generic highlighted row with label (left) and optional value (right). Each row registers its hit-rect on `gm.settings_option_rects` so mouse/touch/keyboard/gamepad can all interact with it.
+- `_draw_add_button()` — centered "+ ADD ..." button.
+- **FOLDERS tab**: lists all configured library folders with delete buttons + an "Add Folder" button (reuses `add_gm_folder_dialog` from `ui/draw_setup.py`).
+- **CONSOLES tab**: read-only list of auto-detected standard consoles (PSP/PS2/PS3 + any `_win/_ios` pairs) showing emulator name and game count, followed by editable custom consoles with delete buttons + "Add Custom Console" button.
+- **DISPLAY tab**: Grid Size (cycles Small/Medium/Large) and Fullscreen toggle.
+- **SYSTEM tab**: Auto-Start toggle, Lock Screen, Restart, Shutdown, Exit Game Machine — consolidates the old Exit menu power actions.
+- **ABOUT tab**: Version, library folder, games count, console counts, grid size, fullscreen, auto-start status.
+
+### Modified: `ui/draw_header.py`
+- Added a SETTINGS button between CLOCK and EXIT (cyan-themed, matching the settings panel accent).
+- Header now has 3 focusable buttons: `header_focus 0=SIZE, 1=SETTINGS, 2=EXIT`.
+
+### Modified: `app.py`
+- Added settings state to `__init__`: `settings_active`, `settings_tab`, `settings_sel`, `settings_anim_start`, `settings_tab_rects`, `settings_option_rects`, `settings_close_rect`.
+- Added methods: `_show_settings()`, `_close_settings()`, `_settings_switch_tab()`, `_settings_activate()`, `_settings_execute(action)` (dispatches add/delete/toggle/power actions), `_settings_rescan()` (saves settings, refreshes config paths, re-scans consoles/games, rebuilds tabs, starts cover generator thread), `_settings_add_folder()`, `_settings_add_console()`.
+- `_show_exit_menu()` now closes settings if open, and `_show_settings()` closes exit menu if open (mutual exclusion).
+- `move_sel()` header navigation updated from 2-button toggle to 3-button clamp (`max(0, min(2, ...))`).
+- `click()` now checks `settings_rect` after `size_rect`.
+- Event handler: added a full settings panel input block (keyboard, gamepad, mouse motion, mouse click, touch) between the exit-menu block and normal input.
+- `draw()` now calls `draw_settings(self, now)` after `draw_exit_menu()`.
+
+### Modified: `input/keyboard.py`
+- Enter/Space now dispatches: `header_focus 0` → size, `1` → settings, `2` → exit menu.
+
+### Modified: `input/gamepad.py`
+- A button now dispatches: `header_focus 0` → size, `1` → settings, `2` → exit menu.
+- `update_gamepad_axes()` now checks `settings_active` before the popup check and routes D-pad/analog UP/DOWN to settings option navigation.
+
+Navigation summary: L1/R1 or Q/E or LEFT/RIGHT switches tabs; UP/DOWN navigates options; A/Enter activates; B/Esc/[X] closes.
+
+Verified: `py_compile` clean; all tab labels fit in the tab bar (max 87px < 138px per tab); hint footer (402px) fits in the 760px panel.
+
 ## [2026-07-18] bugfix | Power Menu: fix icon/label overlap and add mouse close button
 Two issues in the Power Menu (`ui/draw_exit_menu.py`):
 

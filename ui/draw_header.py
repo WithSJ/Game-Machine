@@ -26,9 +26,9 @@ def draw_header(gm, now):
     sub = gm.f_sub.render("v4 · EMULATOR FRONTEND", True, COL_DIMMER)
     scr.blit(sub, (x_end + 12, 30))
 
-    # EXIT button
+    # EXIT button (rightmost)
     gm.exit_rect = pygame.Rect(int(SCREEN_W - PAD_X - 58), 20, 58, 28)
-    exit_focused = gm.header_focus == 1
+    exit_focused = gm.header_focus == 2
     pygame.draw.rect(scr, (60, 20, 25), gm.exit_rect, border_radius=6)
     if exit_focused:
         pygame.draw.rect(scr, (255, 120, 130), gm.exit_rect, 2, border_radius=6)
@@ -37,9 +37,21 @@ def draw_header(gm, now):
     ex = gm.f_sub.render("EXIT", True, (255, 120, 130))
     scr.blit(ex, ex.get_rect(center=gm.exit_rect.center))
 
-    # Clock
+    # SETTINGS button (left of EXIT)
+    settings_focused = gm.header_focus == 1
+    settings_label = gm.f_sub.render("SETTINGS", True, (95, 212, 232))
+    sw = settings_label.get_width() + 24
+    gm.settings_rect = pygame.Rect(gm.exit_rect.x - 10 - sw, 20, sw, 28)
+    pygame.draw.rect(scr, COL_PANEL2, gm.settings_rect, border_radius=6)
+    if settings_focused:
+        pygame.draw.rect(scr, (95, 212, 232), gm.settings_rect, 2, border_radius=6)
+    else:
+        pygame.draw.rect(scr, COL_CARD_BORDER, gm.settings_rect, 1, border_radius=6)
+    scr.blit(settings_label, settings_label.get_rect(center=gm.settings_rect.center))
+
+    # Clock (left of SETTINGS)
     clock_s = gm.f_clock.render(time.strftime("%I:%M %p").lstrip("0"), True, (213, 215, 220))
-    cx = gm.exit_rect.x - 18 - clock_s.get_width()
+    cx = gm.settings_rect.x - 18 - clock_s.get_width()
     scr.blit(clock_s, (cx, 24))
 
     # Pad status

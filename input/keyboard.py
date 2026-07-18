@@ -35,6 +35,8 @@ def handle_keyboard(gm, event):
         if gm.header_focus == 0:
             gm._activate_header_size()
         elif gm.header_focus == 1:
+            gm._show_settings()
+        elif gm.header_focus == 2:
             gm._show_exit_menu()
         else:
             gm.launch_selected()

@@ -48,6 +48,7 @@ from ui.draw_toast import draw_toast
 from ui.draw_popup import draw_popup
 from ui.draw_exit_menu import draw_exit_menu
 from ui.draw_setup import draw_setup
+from ui.draw_settings import draw_settings, TABS as SETTINGS_TABS
 from ui.cache import (
     build_bg, build_gridlines, get_hero_bg, get_ghost_text,
     get_cover_for, get_placeholder
@@ -178,6 +179,15 @@ class GameMachine:
         self.exit_menu_close_rect = pygame.Rect(0, 0, 0, 0)
         self.auto_start = is_auto_start_enabled()
 
+        # Settings panel state
+        self.settings_active = False
+        self.settings_tab = 0
+        self.settings_sel = 0
+        self.settings_anim_start = 0
+        self.settings_tab_rects = []
+        self.settings_option_rects = []
+        self.settings_close_rect = pygame.Rect(0, 0, 0, 0)
+
         # Handle restart flag cleanup on boot
         restart_flag = self.playdata.pop("__restart_pending__", False)
         if restart_flag:
@@ -296,10 +306,10 @@ class GameMachine:
     def move_sel(self, dx, dy):
         L = self.current_list()
 
-        # If header is focused, handle navigation within header
+        # If header is focused, handle navigation within header (3 buttons)
         if self.header_focus >= 0:
             if dx != 0:
-                self.header_focus = 1 - self.header_focus
+                self.header_focus = max(0, min(2, self.header_focus + dx))
             if dy > 0:
                 self.header_focus = -1
             return
@@ -395,12 +405,127 @@ class GameMachine:
     def _show_exit_menu(self):
         if self.exit_menu_active:
             return
+        self.settings_active = False  # Close settings if open
         self.exit_menu_active = True
         self.exit_menu_sel = 0
         self.exit_menu_anim_start = pygame.time.get_ticks()
 
     def _close_exit_menu(self):
         self.exit_menu_active = False
+
+    # ---------------- settings panel ----------------
+    def _show_settings(self):
+        if self.settings_active:
+            return
+        self.exit_menu_active = False  # Close exit menu if open
+        self.settings_active = True
+        self.settings_tab = 0
+        self.settings_sel = 0
+        self.settings_anim_start = pygame.time.get_ticks()
+        self.header_focus = -1
+
+    def _close_settings(self):
+        self.settings_active = False
+
+    def _settings_switch_tab(self, delta):
+        n = len(SETTINGS_TABS)
+        self.settings_tab = (self.settings_tab + delta) % n
+        self.settings_sel = 0
+
+    def _settings_activate(self):
+        if not self.settings_option_rects:
+            return
+        if self.settings_sel >= len(self.settings_option_rects):
+            return
+        action, _ = self.settings_option_rects[self.settings_sel]
+        self._settings_execute(action)
+
+    def _settings_execute(self, action):
+        if action == "add_folder":
+            self._settings_add_folder()
+        elif action == "add_console":
+            self._settings_add_console()
+        elif action.startswith("delete_folder:"):
+            idx = int(action.split(":")[1])
+            if 0 <= idx < len(self.folders):
+                removed = self.folders.pop(idx)
+                self._settings_rescan()
+                self.pop(f"Removed: {os.path.basename(removed)}")
+        elif action.startswith("delete_console:"):
+            name = action.split(":", 1)[1]
+            if name in self.custom_consoles:
+                del self.custom_consoles[name]
+                self._settings_rescan()
+                self.pop(f"Removed: {name}")
+        elif action == "cycle_grid_size":
+            self._activate_header_size()
+        elif action == "toggle_fullscreen":
+            self.toggle_fullscreen()
+        elif action == "toggle_auto_start":
+            self._toggle_auto_start()
+        elif action == "lock_screen":
+            self._close_settings()
+            try:
+                import ctypes
+                ctypes.windll.user32.LockWorkStation()
+            except Exception as e:
+                self.pop(f"Lock failed: {e}")
+        elif action == "restart":
+            self.playdata["__restart_pending__"] = True
+            save_playdata(self.playdata)
+            set_auto_start(True)
+            pygame.quit()
+            os.system("shutdown /r /t 3 /c \"Game Machine: Restarting...\"")
+            sys.exit(0)
+        elif action == "shutdown":
+            pygame.quit()
+            os.system("shutdown /s /t 3 /c \"Game Machine: Shutting down...\"")
+            sys.exit(0)
+        elif action == "exit_gm":
+            self.running = False
+
+    def _settings_rescan(self):
+        """Re-save settings, refresh config paths, and re-scan games."""
+        self.settings["folders"] = self.folders
+        self.settings["custom_consoles"] = self.custom_consoles
+        save_playdata(self.playdata)
+
+        from core.config import refresh_paths
+        refresh_paths()
+
+        self.consoles = discover_consoles(self.folders, self.custom_consoles)
+        self.colors = build_console_colors(self.consoles)
+        self.games = scan_games(self.consoles)
+
+        present = [c for c in self.consoles if any(g["console"] == c for g in self.games)]
+        self.tabs = [("RECENTS", REC_COLOR)] + [(c, self.colors[c]) for c in present]
+
+        if self.tab >= len(self.tabs):
+            self.tab = max(0, len(self.tabs) - 1)
+        self.sel = 0
+        self.scroll = 0.0
+        self.scroll_t = 0.0
+        self.ensure = True
+        self.switch_ms = pygame.time.get_ticks()
+
+        if self.games:
+            threading.Thread(
+                target=background_cover_generator_thread,
+                args=(self.games, self.colors, self._cover_cache, self.consoles),
+                daemon=True
+            ).start()
+
+    def _settings_add_folder(self):
+        from ui.draw_setup import add_gm_folder_dialog
+        add_gm_folder_dialog(self)
+        self._settings_rescan()
+        self.settings_sel = 0
+
+    def _settings_add_console(self):
+        from ui.draw_setup import add_custom_console_dialog
+        add_custom_console_dialog(self)
+        self._settings_rescan()
+        self.settings_sel = 0
 
     def _exit_menu_confirm(self):
         sel = self.exit_menu_sel
@@ -457,6 +582,9 @@ class GameMachine:
             return
         if hasattr(self, "size_rect") and self.size_rect.collidepoint(pos):
             self._activate_header_size()
+            return
+        if hasattr(self, "settings_rect") and self.settings_rect.collidepoint(pos):
+            self._show_settings()
             return
         for i, r in self.tab_rects:
             if r.collidepoint(pos):
@@ -634,6 +762,73 @@ class GameMachine:
                         self._toggle_auto_start()
             return
 
+        # ---- Settings panel input handling ----
+        if getattr(self, "settings_active", False):
+            n_tabs = len(SETTINGS_TABS)
+            if e.type == pygame.KEYDOWN:
+                if e.key == pygame.K_ESCAPE:
+                    self._close_settings()
+                elif e.key in (pygame.K_UP, pygame.K_w):
+                    if self.settings_option_rects:
+                        self.settings_sel = (self.settings_sel - 1) % len(self.settings_option_rects)
+                elif e.key in (pygame.K_DOWN, pygame.K_s):
+                    if self.settings_option_rects:
+                        self.settings_sel = (self.settings_sel + 1) % len(self.settings_option_rects)
+                elif e.key in (pygame.K_LEFT, pygame.K_q):
+                    self._settings_switch_tab(-1)
+                elif e.key in (pygame.K_RIGHT, pygame.K_e):
+                    self._settings_switch_tab(1)
+                elif e.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
+                    self._settings_activate()
+            elif e.type == pygame.JOYBUTTONDOWN:
+                if e.button == 0:    # A = confirm
+                    self._settings_activate()
+                elif e.button == 1:  # B = close
+                    self._close_settings()
+                elif e.button == 4:  # L1 = prev tab
+                    self._settings_switch_tab(-1)
+                elif e.button == 5:  # R1 = next tab
+                    self._settings_switch_tab(1)
+            elif e.type == pygame.MOUSEMOTION:
+                if not getattr(e, "touch", False):
+                    for idx, (action, rect) in enumerate(self.settings_option_rects):
+                        if rect.collidepoint(e.pos):
+                            self.settings_sel = idx
+                            break
+            elif e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
+                if not getattr(e, "touch", False):
+                    if self.settings_close_rect.collidepoint(e.pos):
+                        self._close_settings()
+                        return
+                    for idx, rect in self.settings_tab_rects:
+                        if rect.collidepoint(e.pos):
+                            self.settings_tab = idx
+                            self.settings_sel = 0
+                            return
+                    for idx, (action, rect) in enumerate(self.settings_option_rects):
+                        if rect.collidepoint(e.pos):
+                            self.settings_sel = idx
+                            self._settings_execute(action)
+                            return
+            elif e.type == pygame.FINGERUP:
+                if self.touch_start is not None and not getattr(self, 'touch_moved', False):
+                    w, h = self.screen.get_size()
+                    pos = (e.x * w, e.y * h)
+                    if self.settings_close_rect.collidepoint(pos):
+                        self._close_settings()
+                        return
+                    for idx, rect in self.settings_tab_rects:
+                        if rect.collidepoint(pos):
+                            self.settings_tab = idx
+                            self.settings_sel = 0
+                            return
+                    for idx, (action, rect) in enumerate(self.settings_option_rects):
+                        if rect.collidepoint(pos):
+                            self.settings_sel = idx
+                            self._settings_execute(action)
+                            return
+            return
+
         # ----- Normal input handling -----
         if e.type == pygame.KEYDOWN:
             handle_keyboard(self, e)
@@ -725,6 +920,7 @@ class GameMachine:
         draw_toast(self, now)
         draw_popup(self, now)
         draw_exit_menu(self, now)
+        draw_settings(self, now)
 
     def handle_setup_event(self, e):
         # Handle help overlay dismiss

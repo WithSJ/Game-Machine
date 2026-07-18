@@ -12,6 +12,8 @@ def handle_gamepad_buttons(gm, event):
         if gm.header_focus == 0:
             gm._activate_header_size()
         elif gm.header_focus == 1:
+            gm._show_settings()
+        elif gm.header_focus == 2:
             gm._show_exit_menu()
         else:
             gm.launch_selected()
@@ -84,6 +86,23 @@ def update_gamepad_axes(gm, now):
                 gm.exit_menu_sel = (gm.exit_menu_sel + d) % 4
             _pad_axis_repeat(gm, "y", dy, now, exit_menu_ud)
         return
+    # Block grid navigation when settings panel is active; handle D-pad up/down
+    if getattr(gm, "settings_active", False):
+        j = gm.joystick
+        if j is not None:
+            dy = 0
+            if j.get_numhats() > 0:
+                _, hy = j.get_hat(0)
+                dy = -hy
+            if dy == 0 and j.get_numaxes() > 1:
+                ay = j.get_axis(1)
+                dy = 1 if ay > AXIS_DEADZONE else (-1 if ay < -AXIS_DEADZONE else 0)
+            def settings_ud(d):
+                if gm.settings_option_rects:
+                    gm.settings_sel = (gm.settings_sel + d) % len(gm.settings_option_rects)
+            _pad_axis_repeat(gm, "y", dy, now, settings_ud)
+        return
+
     # Block grid navigation when popup is active; handle popup D-pad instead
     if gm.popup_active:
         j = gm.joystick
