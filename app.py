@@ -294,8 +294,6 @@ class GameMachine:
 
     def move_sel(self, dx, dy):
         L = self.current_list()
-        if not L:
-            return
 
         # If header is focused, handle navigation within header
         if self.header_focus >= 0:
@@ -303,6 +301,14 @@ class GameMachine:
                 self.header_focus = 1 - self.header_focus
             if dy > 0:
                 self.header_focus = -1
+            return
+
+        # Empty list: only UP does something (jumps to header).
+        # Without this, an empty RECENTS tab traps the user - they can't
+        # reach the SIZE/EXIT buttons via gamepad.
+        if not L:
+            if dy < 0:
+                self.header_focus = 0  # focus SIZE button first
             return
 
         # Check if pressing UP from the top row -> go to header

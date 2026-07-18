@@ -2,6 +2,11 @@
 
 This file is a chronological log of operations performed on the Wiki (latest logs on top).
 
+## [2026-07-18] bugfix | Empty RECENTS tab trapped gamepad users out of EXIT button
+`app.py::move_sel` had an early `if not L: return` that ran *before* the header-focus logic. When the RECENTS tab was empty (nothing played yet - the default state on a fresh install), pressing UP on the gamepad hit that return and never reached the code that moves focus to the SIZE/EXIT buttons. The user was stuck with no way to reach Power Menu via controller.
+
+Fix: restructured `move_sel` so the header-focus block runs first regardless of list size; when the list is empty, only UP does something (jumps focus to the SIZE button, from which LEFT reaches EXIT and A activates it).
+
 ## [2026-07-18] bugfix | Comprehensive bug sweep across 8 modules
 Audited the full codebase and fixed 15 bugs of varying severity:
 
