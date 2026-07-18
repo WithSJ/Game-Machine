@@ -14,8 +14,9 @@ def draw_footer(gm, now):
 
     pygame.draw.line(scr, COL_FOOT_LINE, (0, FOOTER_Y), (SCREEN_W, FOOTER_Y))
     ncons = max(0, len(gm.tabs) - 1)
+    folder_str = gm.folders[0] if getattr(gm, "folders", None) else BASE
     status = gm.f_small.render(
-        f"{BASE.upper()}  ·  {len(gm.games)} GAMES SCANNED  ·  {ncons} CONSOLES",
+        f"{folder_str.upper()}  ·  {len(gm.games)} GAMES SCANNED  ·  {ncons} CONSOLES",
         True, COL_DIMMER)
     scr.blit(status, (PAD_X, FOOTER_Y + 18))
 
