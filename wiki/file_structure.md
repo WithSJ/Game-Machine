@@ -42,7 +42,7 @@ To add support for a new console, you have two options:
 2. **Custom Mapping**: Run the Setup Wizard and add a custom console, where you can pair any custom emulator `.exe` file with any directory containing game files on your system.
 
 ## Cover Art Cache
-To preserve portability, the `covers\` folder is stored directly in the launcher's root directory (`PROJECT_DIR`) next to `console.py`, rather than inside the emulation directories. This ensures that cover arts persist inside the launcher folder, allowing you to move the launcher across different machines or drives while keeping your cache intact.
+The `covers\` folder is stored inside the primary configured Game Machine directory (`BASE\covers`, e.g., `D:\Game Machine\covers`). This ensures that Game Machine automatically detects and loads any of your pre-existing cover arts, and centralizes all cover image storage in your main game library folder.
 
 ## Related Pages
 - [Architecture](file:///c:/Users/jadam/Desktop/Game-Machine/wiki/architecture.md)
