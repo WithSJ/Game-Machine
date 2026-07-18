@@ -98,10 +98,14 @@ def add_custom_console_dialog(gm):
         else:
             name = exe_base.upper()
 
+        # Check standard resolved consoles for the folders added so far
+        from core.scanner import discover_consoles
+        active_standard_consoles = discover_consoles(gm.folders)
+
         # Ensure name uniqueness
         orig_name = name
         counter = 2
-        while name in gm.custom_consoles or name in ("PSP", "PS2", "PS3"):
+        while name in gm.custom_consoles or name in active_standard_consoles:
             name = f"{orig_name} {counter}"
             counter += 1
 
