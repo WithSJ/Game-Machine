@@ -25,7 +25,6 @@ grid_height = ui.theme.FOOTER_Y - 310 - 6
 ui.theme.GRID_RECT = pygame.Rect(ui.theme.PAD_X, 310, int(ui.theme.SCREEN_W - 2 * ui.theme.PAD_X), int(grid_height))
 
 # Now import modules that depend on theme constants
-from core.config import BASE, CONSOLES, PLAYDATA_FILE, COVERS_DIR
 from core.scanner import discover_consoles, scan_games
 from core.playdata import load_playdata, save_playdata, fmt_dur, fmt_last
 from core.launcher import launch_game
@@ -485,18 +484,20 @@ class GameMachine:
 
     # ---------------- input ----------------
     def handle_event(self, e):
+        # Always honor QUIT (Alt-F4 / window close), even during the
+        # post-launch input freeze - otherwise the user can't exit.
+        if e.type == pygame.QUIT:
+            if getattr(self, "needs_setup", False):
+                pygame.quit()
+                sys.exit()
+            self._show_exit_menu()
+            return
+
         if pygame.time.get_ticks() < getattr(self, "ignore_input_until", 0):
             return
 
         if getattr(self, "needs_setup", False):
-            if e.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
             self.handle_setup_event(e)
-            return
-
-        if e.type == pygame.QUIT:
-            self._show_exit_menu()
             return
 
         # ---- Decryption progress input handling ----
@@ -587,7 +588,7 @@ class GameMachine:
                     self.exit_menu_sel = (self.exit_menu_sel + 1) % 4
                 elif e.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
                     self._exit_menu_confirm()
-                elif e.key in (pygame.K_a,):
+                elif e.key == pygame.K_y:
                     self._toggle_auto_start()
             elif e.type == pygame.JOYBUTTONDOWN:
                 if e.button == 0:
@@ -671,7 +672,7 @@ class GameMachine:
             draw_toast(self, now)
             return
 
-        L = gm_list = self.current_list()
+        gm_list = self.current_list()
         sel = min(self.sel, len(gm_list) - 1) if gm_list else 0
         cur = gm_list[sel] if gm_list else None
         accent = self.colors.get(cur["console"], self.accent()) if cur else self.accent()
@@ -718,7 +719,20 @@ class GameMachine:
             elif e.type == pygame.JOYBUTTONDOWN:
                 self.setup_help_active = False
             elif e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
-                self.setup_help_active = False
+                # Only the [X] close button dismisses via mouse click.
+                # The setup_help_close_rect is set in draw_setup_help_modal().
+                close_rect = getattr(self, "setup_help_close_rect", None)
+                if close_rect is not None and close_rect.collidepoint(e.pos):
+                    self.setup_help_active = False
+            elif e.type == pygame.FINGERUP:
+                # Only count as a tap (dismiss) if the finger didn't drag
+                # and it landed on the close button.
+                if self.touch_start is not None and not getattr(self, 'touch_moved', False):
+                    w, h = self.screen.get_size()
+                    pos = (e.x * w, e.y * h)
+                    close_rect = getattr(self, "setup_help_close_rect", None)
+                    if close_rect is not None and close_rect.collidepoint(pos):
+                        self.setup_help_active = False
             return
 
         # Keyboard navigation
@@ -791,6 +805,11 @@ class GameMachine:
         self.settings["folders"] = self.folders
         self.settings["custom_consoles"] = self.custom_consoles
         save_playdata(self.playdata)
+
+        # Refresh module-level BASE/COVERS_DIR so cover generation and other
+        # consumers pick up the newly-configured library folder.
+        from core.config import refresh_paths
+        refresh_paths()
 
         # Trigger dynamic scan and rebuild configs
         self.consoles = discover_consoles(self.folders, self.custom_consoles)

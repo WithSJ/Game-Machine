@@ -85,12 +85,12 @@ def save_playdata(data):
 
 
 def fmt_dur(seconds):
-    """4h 20m style duration."""
+    """4h 20m style duration. 0 seconds shows as '0m' rather than '1m'."""
     minutes = seconds // 60
     hours, minutes = divmod(minutes, 60)
     if hours:
         return f"{hours}h {minutes:02d}m"
-    return f"{max(1, minutes)}m"
+    return f"{minutes}m"
 
 
 def fmt_last(timestamp):

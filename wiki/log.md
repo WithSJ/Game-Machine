@@ -2,6 +2,32 @@
 
 This file is a chronological log of operations performed on the Wiki (latest logs on top).
 
+## [2026-07-18] bugfix | Comprehensive bug sweep across 8 modules
+Audited the full codebase and fixed 15 bugs of varying severity:
+
+**Critical**
+- `core/decrypter.py`: Replaced destructive `os.remove()` + `shutil.move()` pattern with a rename-to-`.enc.bak` + move + delete-backup sequence so a failed move can no longer delete the user's original encrypted ISO.
+- `core/decrypter.py`: Removed hardcoded `D:\Game Machine\PS3QDD.v1.3.2.with.keys` path; added `_resolve_tool_dir()` which searches configured `BASE`/`folders`/`PROJECT_DIR` (and any `PS3QDD*` child) so decryption works on any drive letter.
+- `app.py`: Exit menu keyboard shortcut for Auto-Start was bound to `K_a` instead of `K_y`, contradicting the on-screen hint and the gamepad Y-button mapping. Switched to `K_y`.
+- `covers/generator.py`: Refactored the PSP/PS3 cover-generation branches (previously near-duplicated) into a shared `_build_composite_cover()` helper and dropped `pygame.init()` / `Surface.convert()` / `Surface.convert_alpha()` calls - SDL is not thread-safe and these ran from the background daemon thread, risking crashes. `pygame.image.save()` works fine on unconverted surfaces.
+
+**Medium**
+- `ui/draw_setup.py`: Setup-screen particles fell in fixed vertical columns because `pt["x"]` was preserved on respawn. Now re-randomized with `random.uniform(0, SCREEN_W)` to match the main dashboard.
+- `app.py::handle_setup_event`: Touch users could not dismiss the Setup Help modal because only `KEYDOWN`/`JOYBUTTONDOWN`/`MOUSEBUTTONDOWN` were handled. Added `FINGERUP` handling.
+- `core/scanner.py::clean_name`: Single-pass bracket regex left a trailing `)` on nested tags like `Game (USA (En,Fr,De))`. Now applies the bracket regex in a loop until stable.
+- `ui/draw_hero.py`: Removed a dead `pulse = 0.55 + 0.45 * math.sin(...)` line that was immediately overwritten by the `abs(...)` variant.
+- `app.py::handle_event`: The 1-second post-launch input freeze also swallowed `QUIT` events, blocking Alt-F4 / window-close during that window. `QUIT` is now handled before the freeze check.
+
+**Minor**
+- `core/playdata.py::fmt_dur`: `fmt_dur(0)` returned `"1m"` due to `max(1, minutes)`. Now returns `"0m"`.
+- `core/config.py`: Module-level `COVERS_DIR`/`BASE` were computed once at import, so folders changed in the Setup Wizard never propagated to the cover generator. Added `get_covers_dir()` + `refresh_paths()` and called `refresh_paths()` from `app.py::finish_setup()`.
+- `app.py`: Removed dead imports (`BASE`, `CONSOLES`, `PLAYDATA_FILE`, `COVERS_DIR` from `core.config`).
+- `app.py::draw`: Removed dead local variable `L` (only `gm_list` was used).
+- `ui/draw_exit_menu.py`: Replaced Unicode power/lock/restart/shutdown glyphs (`⏻ ⚿ ⟳ ◼`) with ASCII tags (`[X] [LOCK] [RST] [OFF]`) because Bahnschrift does not reliably render them and they appeared as tofu boxes.
+- `app.py::handle_setup_event`: The `setup_help_close_rect` was stored but never click-tested - any click anywhere dismissed the modal. Now only the `[X]` button (or a tap on it) dismisses via mouse/touch; keyboard/gamepad still dismiss from anywhere as before.
+
+Verification: `python -m py_compile` clean across all 27 modules; `clean_name()` unit-checked against 5 representative filenames including nested brackets.
+
 ## [2026-07-18] feature | Portable Setup Screen and Custom Configurations
 - Modified `core/config.py` and `core/playdata.py` to dynamically load settings from `playtime.json` and sync the playtime database between `PROJECT_DIR` and the primary library folder `BASE` (`BASE/playtime.json`). It performs a key-by-key merge comparing game playtime (keeping maximum progress) and resolves directories dynamically on save to preserve existing playtimes. Relocated `COVERS_DIR` relative to the primary configured directory (`BASE/covers`) for compatibility with existing cover caches.
 - Updated `discover_consoles` in `core/scanner.py` to support multiple configured directories and user-mapped custom consoles.

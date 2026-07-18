@@ -1,7 +1,53 @@
 import os
 import shutil
 import subprocess
+from core.config import BASE, PROJECT_DIR
 from core.scanner import clean_name
+
+def _resolve_tool_dir():
+    """Locate the PS3Dec tool directory.
+
+    Searches the configured BASE folder(s) first, then PROJECT_DIR, so the
+    path travels with the portable Game Machine folder instead of being
+    hardcoded to a single drive letter.
+    """
+    candidates = []
+    settings_folders = []
+    try:
+        from core.config import load_settings
+        settings_folders = load_settings().get("folders", [])
+    except Exception:
+        pass
+    if BASE:
+        candidates.append(BASE)
+    for f in settings_folders:
+        if f and f not in candidates:
+            candidates.append(f)
+    if PROJECT_DIR and PROJECT_DIR not in candidates:
+        candidates.append(PROJECT_DIR)
+
+    tool_subdirs = [
+        "PS3QDD.v1.3.2.with.keys",
+        "PS3QDD",
+    ]
+    for base_dir in candidates:
+        if not base_dir or not os.path.isdir(base_dir):
+            continue
+        for sub in tool_subdirs:
+            p = os.path.join(base_dir, sub)
+            if os.path.isfile(os.path.join(p, "PS3Dec.exe")):
+                return p
+        # Also scan immediate children of base_dir for any PS3QDD* folder
+        try:
+            for entry in os.listdir(base_dir):
+                if entry.lower().startswith("ps3qdd") and os.path.isdir(os.path.join(base_dir, entry)):
+                    p = os.path.join(base_dir, entry)
+                    if os.path.isfile(os.path.join(p, "PS3Dec.exe")):
+                        return p
+        except OSError:
+            pass
+    # Final fallback: legacy hardcoded path
+    return r"D:\Game Machine\PS3QDD.v1.3.2.with.keys"
 
 def find_dkey_path(iso_path, keys_dir):
     """
@@ -54,7 +100,7 @@ def run_decryption_thread(gm, game):
     """
     try:
         # Configuration paths
-        tool_dir = r"D:\Game Machine\PS3QDD.v1.3.2.with.keys"
+        tool_dir = _resolve_tool_dir()
         ps3dec_exe = os.path.join(tool_dir, "PS3Dec.exe")
         keys_dir = os.path.join(tool_dir, "Keys")
         decrypted_dir = os.path.join(tool_dir, "Decrypted")
@@ -113,12 +159,32 @@ def run_decryption_thread(gm, game):
             return
             
         gm.decryption_status = "Replacing original ISO..."
-        
-        # Overwrite the original encrypted ISO file in RPCS3_ios
+
+        # Replace the original encrypted ISO safely.
+        # The original file is renamed to a .enc.bak first; the freshly
+        # decrypted ISO is then moved into its place. Only after the move
+        # succeeds is the backup deleted. If anything goes wrong mid-way
+        # we restore the backup so the user never loses their game file.
+        original_path = game["path"]
+        backup_path = original_path + ".enc.bak"
         try:
-            if os.path.exists(game["path"]):
-                os.remove(game["path"])
-            shutil.move(temp_decrypted_path, game["path"])
+            if os.path.exists(backup_path):
+                os.remove(backup_path)
+            if os.path.exists(original_path):
+                os.rename(original_path, backup_path)
+            try:
+                shutil.move(temp_decrypted_path, original_path)
+            except Exception as move_err:
+                # Restore the encrypted ISO if the decrypted one couldn't land
+                if os.path.exists(backup_path) and not os.path.exists(original_path):
+                    os.rename(backup_path, original_path)
+                raise move_err
+            # Decrypted ISO is in place - drop the encrypted backup
+            if os.path.exists(backup_path):
+                try:
+                    os.remove(backup_path)
+                except OSError:
+                    pass
         except Exception as e:
             gm.decryption_error = f"Failed to replace original ISO:\n{e}"
             return

@@ -29,8 +29,6 @@ def draw_hero(gm, now, anim_off):
         ghost = gm._ghost_text(cur["console"], accent)
         scr.blit(ghost, (hero.right - ghost.get_width() - 16, hero.y - 34))
     # pulsing glow line along the top edge (fades out to the right)
-    pulse = 0.55 + 0.45 * math.sin(now / 950)
-    # Ensure color range is valid and correct math.sin range
     pulse = 0.55 + 0.45 * abs(math.sin(now / 950))
     glow_w = int(hero.w * 0.6)
     glow = pygame.Surface((glow_w, 2), pygame.SRCALPHA)

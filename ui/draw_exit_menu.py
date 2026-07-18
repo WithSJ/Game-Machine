@@ -40,10 +40,10 @@ def draw_exit_menu(gm, now):
 
         # Menu options
         options = [
-            ("EXIT GAME MACHINE", (240, 112, 60),  "⏻"),
-            ("LOCK SCREEN",       (95, 212, 232),  "⚿"),
-            ("RESTART",           (79, 214, 166),  "⟳"),
-            ("SHUTDOWN",          (200, 70, 80),   "◼"),
+            ("EXIT GAME MACHINE", (240, 112, 60),  "[X]"),
+            ("LOCK SCREEN",       (95, 212, 232),  "[LOCK]"),
+            ("RESTART",           (79, 214, 166),  "[RST]"),
+            ("SHUTDOWN",          (200, 70, 80),   "[OFF]"),
         ]
         gm.exit_menu_option_rects = []
         opt_w, opt_h = pw - 60, 44

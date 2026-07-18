@@ -3,6 +3,7 @@ GAME MACHINE - Setup Screen drawing and interactions.
 """
 import os
 import math
+import random
 import tkinter as tk
 from tkinter import filedialog, simpledialog
 import pygame
@@ -147,7 +148,7 @@ def draw_setup(gm, now):
         pt["y"] -= pt["v"]
         if pt["y"] < -4:
             pt["y"] = SCREEN_H + 4
-            pt["x"] = pt.get("x", 0)
+            pt["x"] = random.uniform(0, SCREEN_W)
         tw = 0.25 + 0.35 * abs(math.sin(now / 1400 + pt["ph"]))
         pygame.draw.circle(gm._overlay, accent + (int(tw * 255),),
                            (int(pt["x"]), int(pt["y"])), pt["s"])
