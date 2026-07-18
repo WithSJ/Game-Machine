@@ -48,6 +48,7 @@ from ui.draw_footer import draw_footer
 from ui.draw_toast import draw_toast
 from ui.draw_popup import draw_popup
 from ui.draw_exit_menu import draw_exit_menu
+from ui.draw_setup import draw_setup
 from ui.cache import (
     build_bg, build_gridlines, get_hero_bg, get_ghost_text,
     get_cover_for, get_placeholder
@@ -666,9 +667,7 @@ class GameMachine:
     # ---------------- drawing ----------------
     def draw(self, now):
         if getattr(self, "needs_setup", False):
-            from ui.draw_setup import draw_setup
             draw_setup(self, now)
-            from ui.draw_toast import draw_toast
             draw_toast(self, now)
             return
 
