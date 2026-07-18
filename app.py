@@ -1,0 +1,630 @@
+"""
+GAME MACHINE - Main App Orchestrator and GameMachine Class.
+"""
+import math
+import os
+import random
+import sys
+import time
+import threading
+import pygame
+import pygame.gfxdraw
+
+# Initialize pygame and detect native desktop resolution before other UI modules are imported
+pygame.init()
+pygame.joystick.init()
+info = pygame.display.Info()
+
+# Import theme and dynamically override resolution-dependent coordinates
+import ui.theme
+ui.theme.SCREEN_W = info.current_w
+ui.theme.SCREEN_H = info.current_h
+ui.theme.HERO_RECT = pygame.Rect(ui.theme.PAD_X, 122, int(ui.theme.SCREEN_W - 2 * ui.theme.PAD_X), 172)
+ui.theme.FOOTER_Y = ui.theme.SCREEN_H - 52
+grid_height = ui.theme.FOOTER_Y - 310 - 6
+ui.theme.GRID_RECT = pygame.Rect(ui.theme.PAD_X, 310, int(ui.theme.SCREEN_W - 2 * ui.theme.PAD_X), int(grid_height))
+
+# Now import modules that depend on theme constants
+from core.config import BASE, CONSOLES, PLAYDATA_FILE, COVERS_DIR
+from core.scanner import discover_consoles, scan_games
+from core.playdata import load_playdata, save_playdata, fmt_dur, fmt_last
+from core.launcher import launch_game
+from core.autostart import is_auto_start_enabled, set_auto_start
+
+from covers.generator import background_cover_generator_thread
+
+from ui.theme import (
+    COL_BG, COL_TEXT, COL_DIM, COL_DIMMER, COL_PANEL2, COL_CARD_BORDER,
+    REC_COLOR, build_console_colors, ease_out, SCREEN_W, SCREEN_H,
+    GRID_RECT, HERO_RECT, FOOTER_Y, NAV_REPEAT_DELAY, NAV_REPEAT_RATE,
+    TAB_ANIM_MS, TOAST_MS
+)
+from ui.draw_splash import draw_splash
+from ui.draw_header import draw_header
+from ui.draw_tabs import draw_tabs
+from ui.draw_hero import draw_hero
+from ui.draw_grid import draw_grid
+from ui.draw_footer import draw_footer
+from ui.draw_toast import draw_toast
+from ui.draw_popup import draw_popup
+from ui.draw_exit_menu import draw_exit_menu
+from ui.cache import (
+    build_bg, build_gridlines, get_hero_bg, get_ghost_text,
+    get_cover_for, get_placeholder
+)
+
+from input.keyboard import handle_keyboard
+from input.gamepad import (
+    handle_gamepad_buttons, handle_gamepad_connect,
+    handle_gamepad_disconnect, update_gamepad_axes
+)
+from input.mouse import handle_mouse_motion, handle_mouse_click, handle_mouse_wheel
+from input.touch import handle_touch_down, handle_touch_motion, handle_touch_up
+
+
+class GameMachine:
+    def __init__(self):
+        pygame.key.set_repeat(NAV_REPEAT_DELAY, NAV_REPEAT_RATE)
+
+        self.fullscreen = True
+        self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H), pygame.FULLSCREEN)
+        pygame.display.set_caption("GAME MACHINE")
+        self.clock = pygame.time.Clock()
+
+        # ---- Show splash screen IMMEDIATELY so boot feels instant ----
+        self._draw_splash("Starting...")
+        pygame.display.flip()
+
+        self.joystick = None
+        if pygame.joystick.get_count() > 0:
+            self.joystick = pygame.joystick.Joystick(0)
+            self.joystick.init()
+
+        # Fonts
+        self._draw_splash("Loading fonts...")
+        pygame.display.flip()
+
+        def FH(size, bold=False):
+            return pygame.font.SysFont("bahnschrift,verdana,arial", size, bold=bold)
+
+        def FB(size, bold=False):
+            return pygame.font.SysFont("verdana,arial", size, bold=bold)
+
+        self.f_logo = FH(24, True)
+        self.f_sub = FB(11)
+        self.f_clock = FH(17, True)
+        self.f_tab = FH(16, True)
+        self.f_channel = FH(13, True)
+        self.f_hero = FH(38, True)
+        self.f_meta = FB(14)
+        self.f_btn = FH(15, True)
+        self.f_card = FB(13, True)
+        self.f_chip = FB(10, True)
+        self.f_small = FB(12)
+        self.f_hint = FB(12)
+        self.f_ghost = FH(120, True)
+        self.f_mono = pygame.font.SysFont("consolas,couriernew,monospace", 11)
+        self.f_popup_title = FH(22, True)
+        self.f_popup_name = FH(18, True)
+        self.f_popup_btn = FH(15, True)
+
+        # Data - scan games and load playtime
+        self._draw_splash("Scanning games...")
+        pygame.display.flip()
+
+        self.consoles = discover_consoles()
+        self.colors = build_console_colors(self.consoles)
+        self.games = scan_games(self.consoles)
+        self.playdata = load_playdata()
+        
+        # Load user settings or set defaults
+        self.settings = self.playdata.setdefault("__settings__", {"size": "medium"})
+        self.update_sizes()
+
+        present = [c for c in self.consoles if any(g["console"] == c for g in self.games)]
+        self.tabs = [("RECENTS", REC_COLOR)] + [(c, self.colors[c]) for c in present]
+
+        # UI state
+        self.tab = 0 if self._recents() else (1 if len(self.tabs) > 1 else 0)
+        self.sel = 0
+        self.scroll = 0.0
+        self.scroll_t = 0.0
+        self.ensure = True
+        self.switch_ms = pygame.time.get_ticks()
+        self.toast = None
+        self.toast_until = 0
+        self.running = True
+
+        # Header focus: -1 = not focused, 0 = SIZE button, 1 = EXIT button
+        self.header_focus = -1
+
+        # Confirmation popup state
+        self.popup_active = False
+        self.popup_game = None
+        self.popup_sel = 0          # 0 = YES, 1 = NO
+        self.popup_anim_start = 0
+        self.popup_yes_rect = pygame.Rect(0, 0, 0, 0)
+        self.popup_no_rect = pygame.Rect(0, 0, 0, 0)
+
+        # Exit / Power menu state
+        self.exit_menu_active = False
+        self.exit_menu_sel = 0
+        self.exit_menu_anim_start = 0
+        self.exit_menu_option_rects = []
+        self.exit_menu_autostart_rect = pygame.Rect(0, 0, 0, 0)
+        self.auto_start = is_auto_start_enabled()
+
+        # Handle restart flag cleanup on boot
+        restart_flag = self.playdata.pop("__restart_pending__", False)
+        if restart_flag:
+            save_playdata(self.playdata)
+            # If auto-start is off, remove the registry entry that was added for restart
+            if not self.settings.get("auto_start", False):
+                set_auto_start(False)
+                self.auto_start = False
+
+        # Gamepad hold-to-repeat state (x and y tracked separately)
+        self.pad_state = {"x": {"dir": 0, "next": 0}, "y": {"dir": 0, "next": 0}}
+
+        # Touch state
+        self.touch_id = None
+        self.touch_start = None
+        self.touch_last_y = 0.0
+        self.touch_moved = False
+
+        # Hit-test rects
+        self.tab_rects = []
+        self.card_rects = []
+        self.play_rect = None
+        self.details_rect = None
+        self.exit_rect = pygame.Rect(0, 0, 0, 0)
+
+        # Build render caches
+        self._draw_splash("Building UI...")
+        pygame.display.flip()
+
+        self._bg = build_bg()
+        self._gridlines = build_gridlines()
+        self._hero_cache = {}
+        self._ghost_cache = {}
+        self._cover_cache = {}
+        self._placeholder_cache = {}
+
+        # Ambient particles
+        self.particles = [{
+            "x": random.uniform(0, SCREEN_W), "y": random.uniform(0, SCREEN_H),
+            "s": random.uniform(0.6, 2.6), "v": random.uniform(0.1, 0.45),
+            "ph": random.uniform(0, math.tau),
+        } for _ in range(90)]
+        self._overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+
+        # Start background thread to extract PSP & PS2 cover arts
+        threading.Thread(
+            target=background_cover_generator_thread,
+            args=(self.games, self.colors, self._cover_cache),
+            daemon=True
+        ).start()
+
+    def _draw_splash(self, status_text="Loading..."):
+        draw_splash(self.screen, status_text)
+
+    def update_sizes(self):
+        size = self.settings.get("size", "medium")
+        if size == "small":
+            self.cols = 12
+        elif size == "large":
+            self.cols = 5
+        else: # medium
+            self.cols = 8
+            
+        self.gap = 14
+        self.card_w = ((GRID_RECT.w + self.gap) // self.cols) - self.gap
+        self.cover_h = int(self.card_w * 4 // 3)
+        self.card_h = self.cover_h + 90
+        
+        ui.theme.COLS = self.cols
+        
+        # Clear cover cache so everything gets reloaded at the new resolution
+        if hasattr(self, "_cover_cache"):
+            self._cover_cache.clear()
+        if hasattr(self, "_placeholder_cache"):
+            self._placeholder_cache.clear()
+            
+        self.ensure = True
+
+    # ---------------- data helpers ----------------
+    def _recents(self):
+        played = [g for g in self.games if self.playdata.get(g["path"], {}).get("last")]
+        played.sort(key=lambda g: -self.playdata[g["path"]]["last"])
+        return played[:16]
+
+    def current_list(self):
+        name = self.tabs[self.tab][0]
+        if name == "RECENTS":
+            return self._recents()
+        return [g for g in self.games if g["console"] == name]
+
+    def accent(self):
+        return self.tabs[self.tab][1]
+
+    def game_stats(self, game):
+        rec = self.playdata.get(game["path"])
+        if rec and rec.get("last"):
+            return rec
+        return None
+
+    # ---------------- actions ----------------
+    def pop(self, msg):
+        self.toast = msg
+        self.toast_until = pygame.time.get_ticks() + TOAST_MS
+
+    def set_tab(self, i):
+        n = i % len(self.tabs)
+        if n == self.tab:
+            return
+        self.tab = n
+        self.sel = 0
+        self.scroll = self.scroll_t = 0.0
+        self.ensure = True
+        self.switch_ms = pygame.time.get_ticks()
+
+    def move_sel(self, dx, dy):
+        L = self.current_list()
+        if not L:
+            return
+
+        # If header is focused, handle navigation within header
+        if self.header_focus >= 0:
+            if dx != 0:
+                self.header_focus = 1 - self.header_focus
+            if dy > 0:
+                self.header_focus = -1
+            return
+
+        # Check if pressing UP from the top row -> go to header
+        if dy < 0 and self.sel < self.cols:
+            self.header_focus = 0  # focus SIZE button first
+            return
+
+        new = self.sel + dx + dy * self.cols
+        self.sel = max(0, min(new, len(L) - 1))
+        self.ensure = True
+
+    def random_pick(self):
+        L = self.current_list()
+        if not L:
+            return
+        self.sel = random.randrange(len(L))
+        self.ensure = True
+        self.pop("Random pick: " + L[self.sel]["name"])
+
+    def show_details(self):
+        L = self.current_list()
+        if not L:
+            return
+        g = L[min(self.sel, len(L) - 1)]
+        rec = self.game_stats(g)
+        if rec:
+            self.pop(f"{g['name']} · {g['console']} · {fmt_dur(rec['seconds'])} played")
+        else:
+            self.pop(f"{g['name']} · {g['console']} · not played yet")
+
+    def launch_selected(self):
+        L = self.current_list()
+        if not L:
+            return
+        game = L[min(self.sel, len(L) - 1)]
+        self.popup_active = True
+        self.popup_game = game
+        self.popup_sel = 0  # default to YES
+        self.popup_anim_start = pygame.time.get_ticks()
+
+    def _confirm_launch(self):
+        game = self.popup_game
+        self.popup_active = False
+        self.popup_game = None
+        if game is None:
+            return
+        elapsed = launch_game(game, self.consoles)
+        rec = self.playdata.setdefault(game["path"], {"seconds": 0, "last": 0})
+        rec["seconds"] += elapsed
+        rec["last"] = int(time.time())
+        save_playdata(self.playdata)
+        self.pad_state = {"x": {"dir": 0, "next": 0}, "y": {"dir": 0, "next": 0}}
+        self.pop(f"Welcome back · {fmt_dur(elapsed)} session")
+        self.ignore_input_until = pygame.time.get_ticks() + 1000
+
+    def _cancel_popup(self):
+        self.popup_active = False
+        self.popup_game = None
+
+    def _show_exit_menu(self):
+        if self.exit_menu_active:
+            return
+        self.exit_menu_active = True
+        self.exit_menu_sel = 0
+        self.exit_menu_anim_start = pygame.time.get_ticks()
+
+    def _close_exit_menu(self):
+        self.exit_menu_active = False
+
+    def _exit_menu_confirm(self):
+        sel = self.exit_menu_sel
+        if sel == 0:    # Exit Game Machine
+            self.running = False
+        elif sel == 1:  # Lock Screen
+            self._close_exit_menu()
+            try:
+                import ctypes
+                ctypes.windll.user32.LockWorkStation()
+            except Exception as e:
+                self.pop(f"Lock failed: {e}")
+        elif sel == 2:  # Restart
+            self.playdata["__restart_pending__"] = True
+            save_playdata(self.playdata)
+            set_auto_start(True)
+            pygame.quit()
+            os.system("shutdown /r /t 3 /c \"Game Machine: Restarting...\"")
+            sys.exit(0)
+        elif sel == 3:  # Shutdown
+            pygame.quit()
+            os.system("shutdown /s /t 3 /c \"Game Machine: Shutting down...\"")
+            sys.exit(0)
+
+    def _toggle_auto_start(self):
+        self.auto_start = not self.auto_start
+        set_auto_start(self.auto_start)
+        self.settings["auto_start"] = self.auto_start
+        save_playdata(self.playdata)
+        self.pop(f"Auto-Start: {'ON' if self.auto_start else 'OFF'}")
+
+    def _activate_header_size(self):
+        current = self.settings.get("size", "medium")
+        if current == "small":
+            new_size = "medium"
+        elif current == "medium":
+            new_size = "large"
+        else:
+            new_size = "small"
+        self.settings["size"] = new_size
+        save_playdata(self.playdata)
+        self.update_sizes()
+        self.pop(f"Grid size: {new_size.upper()}")
+
+    def toggle_fullscreen(self):
+        self.fullscreen = not self.fullscreen
+        flags = pygame.FULLSCREEN if self.fullscreen else 0
+        self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H), flags)
+
+    def click(self, pos):
+        """Shared mouse-click / touch-tap handler."""
+        if self.exit_rect.collidepoint(pos):
+            self._show_exit_menu()
+            return
+        if hasattr(self, "size_rect") and self.size_rect.collidepoint(pos):
+            self._activate_header_size()
+            return
+        for i, r in self.tab_rects:
+            if r.collidepoint(pos):
+                self.set_tab(i)
+                return
+        if self.play_rect and self.play_rect.collidepoint(pos):
+            self.launch_selected()
+            return
+        if self.details_rect and self.details_rect.collidepoint(pos):
+            self.show_details()
+            return
+        for i, r in self.card_rects:
+            if r.collidepoint(pos):
+                if i == self.sel:
+                    self.launch_selected()
+                else:
+                    self.sel = i
+                return
+
+    # ---------------- UI helpers ----------------
+    def _hero_bg(self, accent):
+        return get_hero_bg(self, accent)
+
+    def _ghost_text(self, text, accent):
+        return get_ghost_text(self, text, accent)
+
+    def _cover_for(self, game):
+        return get_cover_for(self, game)
+
+    def _placeholder(self, accent, active):
+        return get_placeholder(self, accent, active)
+
+    # ---------------- input ----------------
+    def handle_event(self, e):
+        if pygame.time.get_ticks() < getattr(self, "ignore_input_until", 0):
+            return
+
+        if e.type == pygame.QUIT:
+            self._show_exit_menu()
+            return
+
+        # ---- Popup input handling ----
+        if self.popup_active:
+            if e.type == pygame.KEYDOWN:
+                if e.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
+                    if self.popup_sel == 0:
+                        self._confirm_launch()
+                    else:
+                        self._cancel_popup()
+                elif e.key == pygame.K_ESCAPE:
+                    self._cancel_popup()
+                elif e.key in (pygame.K_LEFT, pygame.K_RIGHT):
+                    self.popup_sel = 1 - self.popup_sel
+            elif e.type == pygame.JOYBUTTONDOWN:
+                if e.button == 0:
+                    if self.popup_sel == 0:
+                        self._confirm_launch()
+                    else:
+                        self._cancel_popup()
+                elif e.button == 1:
+                    self._cancel_popup()
+            elif e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
+                if not getattr(e, "touch", False):
+                    if self.popup_yes_rect.collidepoint(e.pos):
+                        self._confirm_launch()
+                    elif self.popup_no_rect.collidepoint(e.pos):
+                        self._cancel_popup()
+            elif e.type == pygame.FINGERUP:
+                if self.touch_start is not None and not getattr(self, 'touch_moved', False):
+                    w, h = self.screen.get_size()
+                    pos = (e.x * w, e.y * h)
+                    if self.popup_yes_rect.collidepoint(pos):
+                        self._confirm_launch()
+                    elif self.popup_no_rect.collidepoint(pos):
+                        self._cancel_popup()
+            return
+
+        # ---- Exit menu input handling ----
+        if self.exit_menu_active:
+            if e.type == pygame.KEYDOWN:
+                if e.key == pygame.K_ESCAPE:
+                    self._close_exit_menu()
+                elif e.key in (pygame.K_UP,):
+                    self.exit_menu_sel = (self.exit_menu_sel - 1) % 4
+                elif e.key in (pygame.K_DOWN,):
+                    self.exit_menu_sel = (self.exit_menu_sel + 1) % 4
+                elif e.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
+                    self._exit_menu_confirm()
+                elif e.key in (pygame.K_a,):
+                    self._toggle_auto_start()
+            elif e.type == pygame.JOYBUTTONDOWN:
+                if e.button == 0:
+                    self._exit_menu_confirm()
+                elif e.button == 1:
+                    self._close_exit_menu()
+                elif e.button == 3:
+                    self._toggle_auto_start()
+            elif e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
+                if not getattr(e, "touch", False):
+                    for idx, rect in self.exit_menu_option_rects:
+                        if rect.collidepoint(e.pos):
+                            self.exit_menu_sel = idx
+                            self._exit_menu_confirm()
+                            return
+                    if self.exit_menu_autostart_rect.collidepoint(e.pos):
+                        self._toggle_auto_start()
+            elif e.type == pygame.FINGERUP:
+                if self.touch_start is not None and not getattr(self, 'touch_moved', False):
+                    w, h = self.screen.get_size()
+                    pos = (e.x * w, e.y * h)
+                    for idx, rect in self.exit_menu_option_rects:
+                        if rect.collidepoint(pos):
+                            self.exit_menu_sel = idx
+                            self._exit_menu_confirm()
+                            return
+                    if self.exit_menu_autostart_rect.collidepoint(pos):
+                        self._toggle_auto_start()
+            return
+
+        # ----- Normal input handling -----
+        if e.type == pygame.KEYDOWN:
+            handle_keyboard(self, e)
+        elif e.type == pygame.JOYBUTTONDOWN:
+            handle_gamepad_buttons(self, e)
+        elif e.type == pygame.JOYDEVICEADDED:
+            handle_gamepad_connect(self, e)
+        elif e.type == pygame.JOYDEVICEREMOVED:
+            handle_gamepad_disconnect(self, e)
+        elif e.type == pygame.MOUSEMOTION:
+            handle_mouse_motion(self, e)
+        elif e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
+            handle_mouse_click(self, e)
+        elif e.type == pygame.MOUSEWHEEL:
+            handle_mouse_wheel(self, e)
+        elif e.type == pygame.FINGERDOWN:
+            handle_touch_down(self, e)
+        elif e.type == pygame.FINGERMOTION:
+            handle_touch_motion(self, e)
+        elif e.type == pygame.FINGERUP:
+            handle_touch_up(self, e)
+
+    def update_gamepad(self, now):
+        update_gamepad_axes(self, now)
+
+    def update_scroll(self):
+        L = self.current_list()
+        if L:
+            self.sel = min(self.sel, len(L) - 1)
+        rows = (len(L) + self.cols - 1) // self.cols
+        max_scroll = max(0, rows * (self.card_h + self.gap) - self.gap - GRID_RECT.h)
+
+        if self.ensure and L:
+            row_top = (self.sel // self.cols) * (self.card_h + self.gap)
+            row_bot = row_top + self.card_h
+            if row_top < self.scroll_t:
+                self.scroll_t = row_top
+            elif row_bot > self.scroll_t + GRID_RECT.h:
+                self.scroll_t = row_bot - GRID_RECT.h
+        self.ensure = False
+
+        self.scroll_t = max(0.0, min(self.scroll_t, float(max_scroll)))
+        self.scroll += (self.scroll_t - self.scroll) * 0.35
+        if abs(self.scroll - self.scroll_t) < 0.5:
+            self.scroll = self.scroll_t
+
+    # ---------------- drawing ----------------
+    def draw(self, now):
+        L = gm_list = self.current_list()
+        sel = min(self.sel, len(gm_list) - 1) if gm_list else 0
+        cur = gm_list[sel] if gm_list else None
+        accent = self.colors.get(cur["console"], self.accent()) if cur else self.accent()
+
+        p = max(0.0, min(1.0, (now - self.switch_ms) / TAB_ANIM_MS))
+        anim_off = int(26 * (1 - ease_out(p)))
+
+        self.tab_rects = []
+        self.card_rects = []
+        self.play_rect = None
+        self.details_rect = None
+
+        self.screen.blit(self._bg, (0, 0))
+        self.screen.blit(self._gridlines, (0, 0))
+
+        # Particles
+        self._overlay.fill((0, 0, 0, 0))
+        tab_col = self.accent()
+        for pt in self.particles:
+            pt["y"] -= pt["v"]
+            if pt["y"] < -4:
+                pt["y"] = SCREEN_H + 4
+                pt["x"] = random.uniform(0, SCREEN_W)
+            tw = 0.25 + 0.35 * abs(math.sin(now / 1400 + pt["ph"]))
+            pygame.draw.circle(self._overlay, tab_col + (int(tw * 255),),
+                               (int(pt["x"]), int(pt["y"])), pt["s"])
+        self.screen.blit(self._overlay, (0, 0))
+
+        # Draw components
+        draw_header(self, now)
+        draw_tabs(self, now)
+        draw_hero(self, now, anim_off)
+        draw_grid(self, now, anim_off)
+        draw_footer(self, now)
+        draw_toast(self, now)
+        draw_popup(self, now)
+        draw_exit_menu(self, now)
+
+    def run(self):
+        while self.running:
+            now = pygame.time.get_ticks()
+            for e in pygame.event.get():
+                self.handle_event(e)
+            self.update_gamepad(now)
+            self.update_scroll()
+            self.draw(now)
+            pygame.display.flip()
+            self.clock.tick(30)
+        pygame.quit()
+
+
+def main():
+    GameMachine().run()
+
+
+if __name__ == "__main__":
+    main()
