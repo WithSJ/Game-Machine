@@ -316,7 +316,7 @@ def _draw_about_tab(gm, scr, content_r):
     scr.blit(title, (content_r.x + 20, y))
     y += title.get_height() + 4
 
-    sub = gm.f_sub.render("v4 - EMULATOR FRONTEND", True, COL_DIMMER)
+    sub = gm.f_sub.render("v1.1.0 - EMULATOR FRONTEND", True, COL_DIMMER)
     scr.blit(sub, (content_r.x + 20, y))
     y += sub.get_height() + 24
 

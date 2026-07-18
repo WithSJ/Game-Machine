@@ -2,6 +2,10 @@
 
 This file is a chronological log of operations performed on the Wiki (latest logs on top).
 
+## [2026-07-18] config | Bump version to v1.1.0 for release
+- Updated the version string from `v4` to `v1.1.0` in `ui/draw_header.py` and `ui/draw_settings.py` to match the release version.
+- Created and pushed Git tag `v1.1.0` to the remote repository.
+
 ## [2026-07-18] doc | Update complete README to reflect modern configuration features
 - Updated `README.md` to reflect the latest codebase additions, including the interactive Setup Wizard and the 5-tab Settings Panel.
 - Updated the system architecture flow diagram (Mermaid) to include configuration checks, first-run wizard, and Settings Panel pathways.

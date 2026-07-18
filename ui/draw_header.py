@@ -23,7 +23,7 @@ def draw_header(gm, now):
     pygame.gfxdraw.filled_polygon(scr, logo_pts, (240, 112, 60))
     pygame.gfxdraw.aapolygon(scr, logo_pts, (240, 112, 60))
     x_end = spaced_text(scr, gm.f_logo, "GAME MACHINE", COL_TEXT, (PAD_X + 26, 20), 5)
-    sub = gm.f_sub.render("v4 · EMULATOR FRONTEND", True, COL_DIMMER)
+    sub = gm.f_sub.render("v1.1.0 · EMULATOR FRONTEND", True, COL_DIMMER)
     scr.blit(sub, (x_end + 12, 30))
 
     # EXIT button (rightmost)
