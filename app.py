@@ -145,6 +145,12 @@ class GameMachine:
         self.popup_anim_start = 0
         self.popup_yes_rect = pygame.Rect(0, 0, 0, 0)
         self.popup_no_rect = pygame.Rect(0, 0, 0, 0)
+        self.popup_type = "launch"  # "launch" or "decrypt"
+        self.decrypting_active = False
+        self.decryption_status = ""
+        self.decryption_error = None
+        self.decryption_success = False
+        self.decryption_close_rect = pygame.Rect(0, 0, 0, 0)
 
         # Exit / Power menu state
         self.exit_menu_active = False
@@ -318,6 +324,29 @@ class GameMachine:
         self.popup_game = game
         self.popup_sel = 0  # default to YES
         self.popup_anim_start = pygame.time.get_ticks()
+        
+        # Check if PS3 game and first time launching (needs decryption)
+        if game["console"] == "PS3" and self.game_stats(game) is None:
+            self.popup_type = "decrypt"
+        else:
+            self.popup_type = "launch"
+
+    def _start_decryption(self):
+        game = self.popup_game
+        self.popup_active = False  # Close the prompt popup
+        self.decrypting_active = True
+        self.decryption_success = False
+        self.decryption_status = "Initializing..."
+        self.decryption_error = None
+        
+        import threading
+        from core.decrypter import run_decryption_thread
+        self.decryption_thread = threading.Thread(
+            target=run_decryption_thread,
+            args=(self, game),
+            daemon=True
+        )
+        self.decryption_thread.start()
 
     def _confirm_launch(self):
         game = self.popup_game
@@ -444,12 +473,44 @@ class GameMachine:
             self._show_exit_menu()
             return
 
+        # ---- Decryption progress input handling ----
+        if getattr(self, "decrypting_active", False):
+            if self.decryption_error:
+                if e.type == pygame.KEYDOWN:
+                    if e.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE, pygame.K_ESCAPE):
+                        self.decrypting_active = False
+                        self.decryption_error = None
+                        self.popup_game = None
+                elif e.type == pygame.JOYBUTTONDOWN:
+                    if e.button in (0, 1): # A or B
+                        self.decrypting_active = False
+                        self.decryption_error = None
+                        self.popup_game = None
+                elif e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
+                    if not getattr(e, "touch", False):
+                        if getattr(self, "decryption_close_rect", pygame.Rect(0,0,0,0)).collidepoint(e.pos):
+                            self.decrypting_active = False
+                            self.decryption_error = None
+                            self.popup_game = None
+                elif e.type == pygame.FINGERUP:
+                    if self.touch_start is not None and not getattr(self, 'touch_moved', False):
+                        w, h = self.screen.get_size()
+                        pos = (e.x * w, e.y * h)
+                        if getattr(self, "decryption_close_rect", pygame.Rect(0,0,0,0)).collidepoint(pos):
+                            self.decrypting_active = False
+                            self.decryption_error = None
+                            self.popup_game = None
+            return
+
         # ---- Popup input handling ----
         if self.popup_active:
             if e.type == pygame.KEYDOWN:
                 if e.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
                     if self.popup_sel == 0:
-                        self._confirm_launch()
+                        if getattr(self, "popup_type", "launch") == "decrypt":
+                            self._start_decryption()
+                        else:
+                            self._confirm_launch()
                     else:
                         self._cancel_popup()
                 elif e.key == pygame.K_ESCAPE:
@@ -459,7 +520,10 @@ class GameMachine:
             elif e.type == pygame.JOYBUTTONDOWN:
                 if e.button == 0:
                     if self.popup_sel == 0:
-                        self._confirm_launch()
+                        if getattr(self, "popup_type", "launch") == "decrypt":
+                            self._start_decryption()
+                        else:
+                            self._confirm_launch()
                     else:
                         self._cancel_popup()
                 elif e.button == 1:
@@ -467,7 +531,10 @@ class GameMachine:
             elif e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
                 if not getattr(e, "touch", False):
                     if self.popup_yes_rect.collidepoint(e.pos):
-                        self._confirm_launch()
+                        if getattr(self, "popup_type", "launch") == "decrypt":
+                            self._start_decryption()
+                        else:
+                            self._confirm_launch()
                     elif self.popup_no_rect.collidepoint(e.pos):
                         self._cancel_popup()
             elif e.type == pygame.FINGERUP:
@@ -475,7 +542,10 @@ class GameMachine:
                     w, h = self.screen.get_size()
                     pos = (e.x * w, e.y * h)
                     if self.popup_yes_rect.collidepoint(pos):
-                        self._confirm_launch()
+                        if getattr(self, "popup_type", "launch") == "decrypt":
+                            self._start_decryption()
+                        else:
+                            self._confirm_launch()
                     elif self.popup_no_rect.collidepoint(pos):
                         self._cancel_popup()
             return
@@ -616,6 +686,13 @@ class GameMachine:
                 self.handle_event(e)
             self.update_gamepad(now)
             self.update_scroll()
+
+            # Check if decryption has finished successfully and launch
+            if getattr(self, "decryption_success", False):
+                self.decryption_success = False
+                self.decrypting_active = False
+                self._confirm_launch()
+
             self.draw(now)
             pygame.display.flip()
             self.clock.tick(30)

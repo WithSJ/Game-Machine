@@ -4,7 +4,7 @@ GAME MACHINE - Cover art grid drawing.
 import pygame
 
 from core.playdata import fmt_last
-from ui.theme import GRID_RECT, COL_BG, COL_PANEL, COL_CARD_BORDER, COL_DIMMER, mix
+from ui.theme import GRID_RECT, COL_BG, COL_PANEL, COL_CARD_BORDER, COL_DIMMER, COL_PAD_OK, mix
 from ui.helpers import wrap_lines
 
 
@@ -25,6 +25,7 @@ def draw_grid(gm, now, anim_off):
         c = gm.colors.get(g["console"], (150, 150, 150))
         lift = -6 if on else 0
         card = pygame.Rect(gx, gy + lift, gm.card_w, gm.card_h)
+        rec = gm.game_stats(g)
 
         pygame.draw.rect(scr, COL_PANEL, card, border_radius=10)
         cover = gm._cover_for(g)
@@ -33,6 +34,15 @@ def draw_grid(gm, now, anim_off):
         scr.set_clip(prev_clip.clip(cov_area) if prev_clip else cov_area)
         scr.blit(cover if cover else gm._placeholder(c, on), cov_area.topleft)
         scr.set_clip(prev_clip)
+
+        # Draw a beautiful "NEW" badge on the top right of the card if not played
+        if not rec:
+            badge_s = gm.f_chip.render("NEW", True, COL_BG)
+            badge_w = badge_s.get_width() + 12
+            badge_h = 18
+            badge_r = pygame.Rect(card.right - badge_w - 8, card.y + 8, badge_w, badge_h)
+            pygame.draw.rect(scr, COL_PAD_OK, badge_r, border_radius=4)
+            scr.blit(badge_s, badge_s.get_rect(center=badge_r.center))
 
         # Clip all card text content within the card boundary
         card_text_area = pygame.Rect(card.x, card.y + gm.cover_h, gm.card_w, gm.card_h - gm.cover_h)
@@ -52,7 +62,6 @@ def draw_grid(gm, now, anim_off):
         chip_r = pygame.Rect(card.x + 10, card.bottom - 26, chip.get_width() + 14, 18)
         pygame.draw.rect(scr, mix(COL_BG, c, 0.35), chip_r, 1, border_radius=3)
         scr.blit(chip, chip.get_rect(center=chip_r.center))
-        rec = gm.game_stats(g)
         sub_txt = fmt_last(rec["last"]) if rec else "NEW"
         sub_s = gm.f_mono.render(sub_txt, True, COL_DIMMER)
         scr.blit(sub_s, (card.right - 10 - sub_s.get_width(), card.bottom - 23))
