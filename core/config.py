@@ -8,8 +8,29 @@ Configured for: D:\\Game Machine
 """
 import os
 import sys
+import json
 
-BASE = r"D:\Game Machine"
+# Project root directory (where console.py lives)
+PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# Play-time database lives next to console.py (portable, travels with the folder)
+PLAYDATA_FILE = os.path.join(PROJECT_DIR, "playtime.json")
+
+def load_settings():
+    try:
+        if os.path.isfile(PLAYDATA_FILE):
+            with open(PLAYDATA_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return data.get("__settings__", {})
+    except (OSError, ValueError):
+        pass
+    return {}
+
+settings = load_settings()
+folders = settings.get("folders", [])
+custom_consoles = settings.get("custom_consoles", {})
+
+BASE = folders[0] if folders else r"D:\Game Machine"
 
 # ============================================================
 # CONFIG - your real paths (taken from the dir /s output)
@@ -40,16 +61,12 @@ CONSOLES = {
 # Default game extensions for auto-detected consoles
 DEFAULT_EXTENSIONS = [".iso", ".cso", ".chd", ".bin"]
 
-# Project root directory (where console.py lives)
-PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-# Play-time database lives next to console.py (portable, travels with the folder)
-PLAYDATA_FILE = os.path.join(PROJECT_DIR, "playtime.json")
-
 # Cover art: covers\<CONSOLE>\<Clean Game Name>.jpg / .png
-COVERS_DIR = os.path.join(BASE, "covers")
+# Set covers directory inside the project root for full portability
+COVERS_DIR = os.path.join(PROJECT_DIR, "covers")
 
 # Auto-start registry key
 AUTOSTART_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 AUTOSTART_NAME = "GameMachine"
 SCRIPT_PATH = os.path.join(PROJECT_DIR, "console.py")
+
