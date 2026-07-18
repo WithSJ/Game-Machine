@@ -8,6 +8,7 @@ This file is a chronological log of operations performed on the Wiki (latest log
 - Implemented a complete Pygame-based Setup Wizard in `ui/draw_setup.py` that utilizes native Tkinter file and directory pickers to allow first-time configuration of folders and custom emulators.
 - Intercepted events, rendering, and background worker threads in `app.py` to handle the setup lifecycle and initiate dynamic game discovery on completion.
 - Updated `wiki/architecture.md` and `wiki/file_structure.md` to reflect dynamic configuration and setup flows.
+- Updated `.gitignore` to ignore subdirectories `covers/PS2/`, `covers/PS3/`, and `covers/PSP/` to keep cached cover arts local-only.
 
 ## [2026-07-18] config | Reverse Wiki Log Order
 - Updated the chronological order of [log.md](file:///c:/Users/jadam/Desktop/Game-Machine/wiki/log.md) to put the latest entries on top.
