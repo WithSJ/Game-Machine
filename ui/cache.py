@@ -60,12 +60,16 @@ def get_ghost_text(gm, text, accent):
 
 
 def get_cover_for(gm, game):
-    """Load covers\\<CONSOLE>\\<Clean Name>.jpg/.png if it exists (cached)."""
+    """Load cover art (cached). First checks next to the ROM file, then falls back to covers\\<CONSOLE>\\."""
     path = game["path"]
     if path not in gm._cover_cache:
         surf = None
+        
+        # 1. Check next to the ROM file (great for portable/custom setups)
+        rom_dir = os.path.dirname(path)
+        base_name = os.path.splitext(os.path.basename(path))[0]
         for ext in (".jpg", ".jpeg", ".png"):
-            p = os.path.join(COVERS_DIR, game["console"], game["name"] + ext)
+            p = os.path.join(rom_dir, base_name + ext)
             if os.path.isfile(p):
                 try:
                     img = pygame.image.load(p).convert()
@@ -73,6 +77,19 @@ def get_cover_for(gm, game):
                 except pygame.error:
                     surf = None
                 break
+
+        # 2. Check the central covers directory
+        if surf is None:
+            for ext in (".jpg", ".jpeg", ".png"):
+                p = os.path.join(COVERS_DIR, game["console"], game["name"] + ext)
+                if os.path.isfile(p):
+                    try:
+                        img = pygame.image.load(p).convert()
+                        surf = pygame.transform.smoothscale(img, (gm.card_w, gm.cover_h))
+                    except pygame.error:
+                        surf = None
+                    break
+                    
         gm._cover_cache[path] = surf
     return gm._cover_cache[path]
 

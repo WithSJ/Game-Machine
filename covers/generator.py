@@ -40,6 +40,13 @@ def background_cover_generator_thread(games, colors, cover_cache):
     except Exception as e:
         print(f"[Cover Gen] Failed to create PS3 covers dir: {e}")
 
+    # 4. Dynamically create folders for other consoles (like custom ones)
+    for g in games:
+        try:
+            os.makedirs(os.path.join(COVERS_DIR, g["console"]), exist_ok=True)
+        except Exception:
+            pass
+
     for g in games:
         path = g["path"]
         
