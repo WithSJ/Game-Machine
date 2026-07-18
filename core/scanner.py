@@ -37,37 +37,93 @@ def find_emulator_exe(folder):
     return max(exes, key=os.path.getsize)
 
 
-def discover_consoles():
-    """CONFIG consoles + any new _win/_ios pairs found in BASE."""
-    consoles = dict(CONSOLES)
-    if not os.path.isdir(BASE):
-        return consoles
+def discover_consoles(folders=None, custom_consoles=None):
+    """Scan all folders for standard consoles and custom consoles, plus _win/_ios pairs."""
+    if folders is None:
+        from core.config import folders as config_folders
+        folders = list(config_folders)
+    if not folders:
+        from core.config import BASE
+        folders = [BASE]
+    if custom_consoles is None:
+        from core.config import custom_consoles as config_customs
+        custom_consoles = config_customs
 
+    # Standard/default consoles setup definition
+    default_consoles = {
+        "PSP": {
+            "rom_sub": "PPSSPP_ios",
+            "extensions": [".iso", ".cso"],
+            "emu_sub": os.path.join("PPSSPP_win", "PPSSPPWindows64.exe"),
+            "args": ["--fullscreen"],
+        },
+        "PS2": {
+            "rom_sub": "PCSX2_ios",
+            "extensions": [".iso", ".chd"],
+            "emu_sub": os.path.join("PCSX2_win", "pcsx2-qt.exe"),
+            "args": ["-fullscreen", "-batch"],
+        },
+        "PS3": {
+            "rom_sub": "RPCS3_ios",
+            "extensions": [".iso"],
+            "emu_sub": os.path.join("RPCS3_win", "rpcs3.exe"),
+            "args": ["--no-gui"],
+        },
+    }
+
+    consoles = {}
+    
+    # 1. Resolve standard/default consoles across configured folders
+    for name, info in default_consoles.items():
+        for folder in folders:
+            rom_folder = os.path.join(folder, info["rom_sub"])
+            emulator = os.path.join(folder, info["emu_sub"])
+            if os.path.isdir(rom_folder) and os.path.isfile(emulator):
+                consoles[name] = {
+                    "rom_folder": rom_folder,
+                    "extensions": info["extensions"],
+                    "emulator": emulator,
+                    "args": info["args"],
+                }
+                break # First match wins
+
+    # 2. Add custom consoles configured via Setup Wizard
+    if custom_consoles:
+        for name, info in custom_consoles.items():
+            consoles[name] = info
+
+    # 3. Auto-detect any other `<NAME>_win` + `<NAME>_ios` folder pairs
     known_rom_folders = {os.path.normcase(cfg["rom_folder"]) for cfg in consoles.values()}
+    for base in folders:
+        if not os.path.isdir(base):
+            continue
+        try:
+            for entry in sorted(os.listdir(base)):
+                if not entry.lower().endswith("_ios"):
+                    continue
+                rom_folder = os.path.join(base, entry)
+                if not os.path.isdir(rom_folder):
+                    continue
+                if os.path.normcase(rom_folder) in known_rom_folders:
+                    continue
 
-    for entry in sorted(os.listdir(BASE)):
-        if not entry.lower().endswith("_ios"):
-            continue
-        rom_folder = os.path.join(BASE, entry)
-        if not os.path.isdir(rom_folder):
-            continue
-        if os.path.normcase(rom_folder) in known_rom_folders:
-            continue  # already configured (e.g. PPSSPP_ios -> PSP)
+                name = entry[: -len("_ios")]
+                emu_folder = os.path.join(base, name + "_win")
+                if not os.path.isdir(emu_folder):
+                    continue
+                exe = find_emulator_exe(emu_folder)
+                if not exe:
+                    continue
 
-        name = entry[: -len("_ios")]
-        emu_folder = os.path.join(BASE, name + "_win")
-        if not os.path.isdir(emu_folder):
-            continue
-        exe = find_emulator_exe(emu_folder)
-        if not exe:
-            continue
+                consoles[name.upper()] = {
+                    "rom_folder": rom_folder,
+                    "extensions": DEFAULT_EXTENSIONS,
+                    "emulator": exe,
+                    "args": [],
+                }
+        except OSError:
+            pass
 
-        consoles[name.upper()] = {
-            "rom_folder": rom_folder,
-            "extensions": DEFAULT_EXTENSIONS,
-            "emulator": exe,
-            "args": [],
-        }
     return consoles
 
 
