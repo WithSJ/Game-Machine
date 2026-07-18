@@ -3,7 +3,7 @@
 This file is a chronological log of operations performed on the Wiki (latest logs on top).
 
 ## [2026-07-18] feature | Portable Setup Screen and Custom Configurations
-- Modified `core/config.py` to dynamically load settings from `playtime.json` and relocated `COVERS_DIR` to the project root directory.
+- Modified `core/config.py` to dynamically load settings from `playtime.json` and resolved `COVERS_DIR` relative to the primary configured directory (`BASE/covers`) for compatibility with existing cover caches.
 - Updated `discover_consoles` in `core/scanner.py` to support multiple configured directories and user-mapped custom consoles.
 - Implemented a complete Pygame-based Setup Wizard in `ui/draw_setup.py` that utilizes native Tkinter file and directory pickers to allow first-time configuration of folders and custom emulators.
 - Intercepted events, rendering, and background worker threads in `app.py` to handle the setup lifecycle and initiate dynamic game discovery on completion.
