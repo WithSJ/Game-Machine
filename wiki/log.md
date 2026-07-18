@@ -10,7 +10,7 @@ This file is a chronological log of operations performed on the Wiki (latest log
 - Updated `wiki/architecture.md` and `wiki/file_structure.md` to reflect dynamic configuration and setup flows.
 - Updated `.gitignore` to ignore all contents of `covers/` except `.py` script files to automatically keep all existing and future cover caches local-only.
 - Added gamepad axis and D-pad support in `input/gamepad.py` for navigating the Setup Wizard menu, enabling full controller capability alongside keyboard and mouse inputs.
-- Refactored `get_cover_for` in `ui/cache.py` to search for cover images next to the ROM file first, then check the central cache directory. Modified `covers/generator.py` to dynamically create directories for all active consoles, making it extremely easy to add cover art for custom/portable systems.
+- Refactored `get_cover_for` in `ui/cache.py` to search for cover images next to the ROM file first, then check the central cache directory. Modified `covers/generator.py` to dynamically create directories for all active consoles and support console name variations (e.g. PPSSPP/PPSSP, PCSX2, RPCS3) during automatic cover extraction/downloading, making cover art resolution seamless for custom systems.
 
 ## [2026-07-18] config | Reverse Wiki Log Order
 - Updated the chronological order of [log.md](file:///c:/Users/jadam/Desktop/Game-Machine/wiki/log.md) to put the latest entries on top.
