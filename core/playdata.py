@@ -9,33 +9,55 @@ from core.config import PLAYDATA_FILE, PROJECT_DIR, BASE
 
 
 def load_playdata():
-    # 1. Try to load from BASE first (since it contains their actual playtimes if it was run there)
-    if BASE and os.path.isdir(BASE):
-        base_path = os.path.join(BASE, "playtime.json")
-        if os.path.isfile(base_path):
-            try:
-                with open(base_path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    # Merge local settings if they are present
-                    local_path = os.path.join(PROJECT_DIR, "playtime.json")
-                    if os.path.isfile(local_path):
-                        with open(local_path, "r", encoding="utf-8") as lf:
-                            local_data = json.load(lf)
-                            if "__settings__" in local_data:
-                                data["__settings__"] = local_data["__settings__"]
-                    return data
-            except (OSError, ValueError):
-                pass
-
-    # 2. Fallback to local playtime.json
+    data = {}
+    
+    # 1. Load from local playtime.json first
     local_path = os.path.join(PROJECT_DIR, "playtime.json")
-    try:
-        if os.path.isfile(local_path):
+    if os.path.isfile(local_path):
+        try:
             with open(local_path, "r", encoding="utf-8") as f:
-                return json.load(f)
-    except (OSError, ValueError):
-        pass
-    return {}
+                local_data = json.load(f)
+                if isinstance(local_data, dict):
+                    data.update(local_data)
+        except (OSError, ValueError):
+            pass
+            
+    # 2. Load from BASE/playtime.json and merge (so if they have playtimes there, they are preserved)
+    # Check both the static BASE and any folders configured in data
+    folders_to_check = []
+    if BASE:
+        folders_to_check.append(BASE)
+    settings = data.get("__settings__", {})
+    for f in settings.get("folders", []):
+        if f not in folders_to_check:
+            folders_to_check.append(f)
+
+    for base_dir in folders_to_check:
+        if base_dir and os.path.isdir(base_dir):
+            base_path = os.path.join(base_dir, "playtime.json")
+            if os.path.isfile(base_path):
+                try:
+                    with open(base_path, "r", encoding="utf-8") as f:
+                        base_data = json.load(f)
+                        if isinstance(base_data, dict):
+                            for k, v in base_data.items():
+                                if k == "__settings__":
+                                    if k not in data:
+                                        data[k] = {}
+                                    data[k].update(v)
+                                else:
+                                    if k in data:
+                                        # Compare seconds and keep the one with more playtime progress
+                                        sec1 = data[k].get("seconds", 0) if isinstance(data[k], dict) else 0
+                                        sec2 = v.get("seconds", 0) if isinstance(v, dict) else 0
+                                        if sec2 > sec1:
+                                            data[k] = v
+                                    else:
+                                        data[k] = v
+                except (OSError, ValueError):
+                    pass
+                    
+    return data
 
 
 def save_playdata(data):
@@ -48,8 +70,13 @@ def save_playdata(data):
         pass
 
     # Save in BASE if BASE is configured and exists (preserves portability and existing playtimes)
-    if BASE and os.path.isdir(BASE) and os.path.normpath(BASE) != os.path.normpath(PROJECT_DIR):
-        base_path = os.path.join(BASE, "playtime.json")
+    # Resolve BASE dynamically from the data to prevent out-of-sync issues during setup
+    settings = data.get("__settings__", {})
+    folders = settings.get("folders", [])
+    base_dir = folders[0] if folders else BASE
+
+    if base_dir and os.path.isdir(base_dir) and os.path.normpath(base_dir) != os.path.normpath(PROJECT_DIR):
+        base_path = os.path.join(base_dir, "playtime.json")
         try:
             with open(base_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
