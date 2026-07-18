@@ -10,7 +10,7 @@ We maintain a persistent, compounding knowledge base under `wiki/` powered by ra
 2. **Co-evolution**: Keep the wiki in sync with codebase modifications. When you add features or refactor code, update the corresponding wiki pages.
 3. **Operations**:
    - For ingestion, querying, and linting, refer to the custom skill [wiki-maintainer](file:///c:/Users/jadam/Desktop/Game-Machine/.agents/skills/wiki-maintainer/SKILL.md).
-   - Log all operations chronologically in [log.md](file:///c:/Users/jadam/Desktop/Game-Machine/wiki/log.md).
+   - Log all operations chronologically in [log.md](file:///c:/Users/jadam/Desktop/Game-Machine/wiki/log.md) (latest entries on top).
    - Keep the [index.md](file:///c:/Users/jadam/Desktop/Game-Machine/wiki/index.md) fully up-to-date.
 
 ## Git Commit & Push Rule

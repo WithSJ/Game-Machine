@@ -25,7 +25,7 @@ When a new file is added to `sources/` or you are asked to process a source:
    - Add new pages under the appropriate categories.
    - Include a concise one-line summary for each page.
 5. **Log the Operation**:
-   - Append a new section to [log.md](file:///c:/Users/jadam/Desktop/Game-Machine/wiki/log.md).
+   - Insert a new section at the top of [log.md](file:///c:/Users/jadam/Desktop/Game-Machine/wiki/log.md) (directly below the introduction header/text).
    - Format the header exactly as: `## [YYYY-MM-DD] ingest | <Source Filename>` followed by a brief bulleted list of changes made.
 
 ### 2. Query Workflow

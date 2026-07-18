@@ -1,10 +1,17 @@
 # Game Machine Wiki Log
 
-This file is an append-only chronological log of operations performed on the Wiki.
+This file is a chronological log of operations performed on the Wiki (latest logs on top).
 
-## [2026-07-18] system | Wiki Initialized
-- Initialized directory structure for the LLM Wiki (`sources/` and `wiki/`).
-- Created custom workspace rules (`.agents/AGENTS.md`) and wiki-maintainer skill (`.agents/skills/wiki-maintainer/SKILL.md`).
+## [2026-07-18] config | Reverse Wiki Log Order
+- Updated the chronological order of [log.md](file:///c:/Users/jadam/Desktop/Game-Machine/wiki/log.md) to put the latest entries on top.
+- Modified custom workspace rules ([AGENTS.md](file:///c:/Users/jadam/Desktop/Game-Machine/.agents/AGENTS.md)) and the [wiki-maintainer](file:///c:/Users/jadam/Desktop/Game-Machine/.agents/skills/wiki-maintainer/SKILL.md) skill to ensure future operations insert logs at the top.
+
+## [2026-07-18] doc | Professional README Update
+- Created a comprehensive and professional README.md outlining Game Machine features, portable directory layouts, internal components, custom decrypter, covers generator, keyboard/gamepad setup, and future development guidelines.
+
+## [2026-07-18] config | Untrack playtime.json
+- Updated `.gitignore` to exclude `playtime.json` from git tracking.
+- Untracked `playtime.json` from the repository using `git rm --cached` to keep it local-only.
 
 ## [2026-07-18] ingest | Game-Machine-Documentation.md
 - Extracted and structured the monolithic Game-Machine-Documentation.md into 6 focused wiki pages:
@@ -16,10 +23,7 @@ This file is an append-only chronological log of operations performed on the Wik
   - [Roadmap](file:///c:/Users/jadam/Desktop/Game-Machine/wiki/roadmap.md)
 - Populated [index.md](file:///c:/Users/jadam/Desktop/Game-Machine/wiki/index.md) with references to all new pages.
 
-## [2026-07-18] config | Untrack playtime.json
-- Updated `.gitignore` to exclude `playtime.json` from git tracking.
-- Untracked `playtime.json` from the repository using `git rm --cached` to keep it local-only.
-
-## [2026-07-18] doc | Professional README Update
-- Created a comprehensive and professional README.md outlining Game Machine features, portable directory layouts, internal components, custom decrypter, covers generator, keyboard/gamepad setup, and future development guidelines.
+## [2026-07-18] system | Wiki Initialized
+- Initialized directory structure for the LLM Wiki (`sources/` and `wiki/`).
+- Created custom workspace rules (`.agents/AGENTS.md`) and wiki-maintainer skill (`.agents/skills/wiki-maintainer/SKILL.md`).
 
