@@ -13,51 +13,44 @@ python console.py
         │
         ▼
 ┌───────────────────┐
-│  1. SCAN GAMES    │  Scans each console's game folders,
-│  scan_games()     │  filters by extension, cleans names using regex.
+│  1. CHECK CONFIG  │  Reads playtime.json settings.
+│  needs_setup?     │  If empty, starts Setup Wizard.
 └────────┬──────────┘
+         │
+         ├─── (Yes) ───►  [ SETUP WIZARD ]
+         │                Configure Game Machine folders / Custom Consoles.
+         │                Saves settings and transitions to scan.
+         │                       │
+         └─── (No) ◄─────────────┘
          ▼
 ┌───────────────────┐
-│  2. UI LOOP       │  Draws 1280x720 window, handles dark theme,
+│  2. SCAN GAMES    │  Scans each console's game folders,
+│  scan_games()     │  filters by extension, cleans names using regex.
+└───────────────────┘
+         ▼
+┌───────────────────┐
+│  3. UI LOOP       │  Draws 1280x720 window, handles dark theme,
 │  main()           │  manages scrolling lists, gamepad/keyboard input.
 └────────┬──────────┘
          ▼ (Enter / A button)
 ┌───────────────────┐
-│  3. LAUNCH        │  Runs subprocess.run() to launch the emulator,
+│  4. LAUNCH        │  Runs subprocess.run() to launch the emulator,
 │  launch_game()    │  freezes frontend, waits for emulator exit,
 │                   │  clears stale input events, resumes UI.
 └────────┬──────────┘
          └──────────→ (loop continues)
 ```
 
-## Console Configurations (`CONSOLES`)
+## Dynamic Console Configurations (`CONSOLES`)
 
-The system configuration is defined in `core/config.py` as a dictionary of console configurations:
+Rather than being hardcoded to a single `BASE` path (like `D:\Game Machine`), console configurations are now dynamically computed by `discover_consoles(folders, custom_consoles)`:
 
-```python
-CONSOLES = {
-    "PSP": {
-        "rom_folder": r"D:\Game Machine\PPSSPP_ios",
-        "extensions": [".iso", ".cso"],
-        "emulator":   r"D:\Game Machine\PPSSPP_win\PPSSPPWindows64.exe",
-        "args":       ["--fullscreen"],
-    },
-    "PS2": {
-        "rom_folder": r"D:\Game Machine\PCSX2_ios",
-        "extensions": [".iso", ".chd"],
-        "emulator":   r"D:\Game Machine\PCSX2_win\pcsx2-qt.exe",
-        "args":       ["-fullscreen", "-batch"],
-    },
-    "PS3": {
-        "rom_folder": r"D:\Game Machine\RPCS3_ios",
-        "extensions": [".iso"],
-        "emulator":   r"D:\Game Machine\RPCS3_win\rpcs3.exe",
-        "args":       ["--no-gui"],
-    },
-}
-```
+1. **Configured Folders**: A list of base directories is loaded from settings in `playtime.json` under `"__settings__": {"folders": [...]}`.
+2. **Path Resolution**: The standard configurations (`PSP`, `PS2`, `PS3`) search across the list of folders. The first folder containing both the corresponding ROM folder and the emulator executable is selected.
+3. **Custom Consoles**: Custom console mappings can be added using the Setup Wizard (which saves them to `"custom_consoles"` in settings).
+4. **Auto-Discovery**: Any directory pair ending in `_win` and `_ios` under the configured folders is auto-detected.
 
-Adding a new console is as simple as defining a new key-value block in this dictionary. This isolates data/configuration from logical execution code.
+This isolates logical execution from data while ensuring complete portability across folders and drives.
 
 ## Related Pages
 - [File Structure](file:///c:/Users/jadam/Desktop/Game-Machine/wiki/file_structure.md)
