@@ -34,11 +34,15 @@ D:\Game Machine\
 
 ## Adding a New Console
 
-To add support for a new console, follow this two-folder pattern:
-1. `<EMULATOR>_win\`: Emulator executable and its associated configuration folder (ensuring it runs in portable mode).
-2. `<EMULATOR>_ios\`: Folder containing the ROMs for that console (matching file extensions like `.iso`, `.cso`, `.chd`).
+To add support for a new console, you have two options:
+1. **Recommended Portable Layout**: Place two folders side-by-side in any of your configured Game Machine directories:
+   - `<EMULATOR>_win\`: Emulator executable and its associated configuration (configured for portable mode).
+   - `<EMULATOR>_ios\`: Folder containing the ROMs for that console (supporting extensions like `.iso`, `.cso`, `.chd`, `.bin`).
+   *These pairs are automatically detected by the scanner.*
+2. **Custom Mapping**: Run the Setup Wizard and add a custom console, where you can pair any custom emulator `.exe` file with any directory containing game files on your system.
 
-Configure the new console in the `CONSOLES` map.
+## Cover Art Cache
+To preserve portability, the `covers\` folder is stored directly in the launcher's root directory (`PROJECT_DIR`) next to `console.py`, rather than inside the emulation directories. This ensures that cover arts persist inside the launcher folder, allowing you to move the launcher across different machines or drives while keeping your cache intact.
 
 ## Related Pages
 - [Architecture](file:///c:/Users/jadam/Desktop/Game-Machine/wiki/architecture.md)
