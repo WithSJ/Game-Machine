@@ -53,6 +53,22 @@ def _pad_axis_repeat(gm, key, cur, now, mover):
 
 def update_gamepad_axes(gm, now):
     """Handle gamepad axis navigation with hold-to-repeat."""
+    # Block normal axes mapping when setup mode is active
+    if getattr(gm, "needs_setup", False):
+        j = gm.joystick
+        if j is not None:
+            dy = 0
+            if j.get_numhats() > 0:
+                _, hy = j.get_hat(0)
+                dy = -hy
+            if dy == 0 and j.get_numaxes() > 1:
+                ay = j.get_axis(1)
+                dy = 1 if ay > AXIS_DEADZONE else (-1 if ay < -AXIS_DEADZONE else 0)
+            def setup_menu_ud(d):
+                gm.setup_sel = (gm.setup_sel + d) % 5
+            _pad_axis_repeat(gm, "y", dy, now, setup_menu_ud)
+        return
+
     # Block grid navigation when exit menu is active; handle D-pad up/down for menu
     if gm.exit_menu_active:
         j = gm.joystick
