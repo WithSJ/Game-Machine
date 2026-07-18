@@ -10,4 +10,9 @@ __pycache__/
 # Local playtime statistics
 playtime.json
 
+# Cover Art Cache (Keep locally, ignore on Git/GitHub)
+covers/PS2/
+covers/PS3/
+covers/PSP/
+
 
