@@ -2,6 +2,16 @@
 
 This file is a chronological log of operations performed on the Wiki (latest logs on top).
 
+## [2026-07-18] config | Enforce mandatory wiki-update + commit + push workflow
+Rewrote `.agents/AGENTS.md` to make the change workflow explicit and mandatory for every modification - no matter how small. Previously the rules for wiki updates and git commit/push were stated separately and were easy to skip on tiny edits. The new "Mandatory Change Workflow" section consolidates them into a single ordered checklist that applies to every file touched:
+
+1. Update `wiki/log.md` (top entry) and any affected wiki pages.
+2. `git add` only the intended files (never `playtime.json` or `covers/`).
+3. Commit with a `<type>:` subject and a descriptive body.
+4. `git push origin main` (or current branch) - confirm it succeeds.
+
+Also added rules of thumb: one logical change per commit, never commit secrets/BIOS/ISOs, never `--amend` pushed commits or force-push, fix root cause on hook failures rather than amending, and the workflow is mandatory even for one-line fixes.
+
 ## [2026-07-18] bugfix | Empty RECENTS tab trapped gamepad users out of EXIT button
 `app.py::move_sel` had an early `if not L: return` that ran *before* the header-focus logic. When the RECENTS tab was empty (nothing played yet - the default state on a fresh install), pressing UP on the gamepad hit that return and never reached the code that moves focus to the SIZE/EXIT buttons. The user was stuck with no way to reach Power Menu via controller.
 
