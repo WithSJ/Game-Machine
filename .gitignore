@@ -7,4 +7,7 @@
 __pycache__/
 *.pyc
 
+# Local playtime statistics
+playtime.json
+
 

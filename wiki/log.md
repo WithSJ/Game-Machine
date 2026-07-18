@@ -15,3 +15,7 @@ This file is an append-only chronological log of operations performed on the Wik
   - [Resolved Bugs](file:///c:/Users/jadam/Desktop/Game-Machine/wiki/resolved_bugs.md)
   - [Roadmap](file:///c:/Users/jadam/Desktop/Game-Machine/wiki/roadmap.md)
 - Populated [index.md](file:///c:/Users/jadam/Desktop/Game-Machine/wiki/index.md) with references to all new pages.
+
+## [2026-07-18] config | Untrack playtime.json
+- Updated `.gitignore` to exclude `playtime.json` from git tracking.
+- Untracked `playtime.json` from the repository using `git rm --cached` to keep it local-only.
