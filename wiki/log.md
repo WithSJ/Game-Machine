@@ -19,3 +19,7 @@ This file is an append-only chronological log of operations performed on the Wik
 ## [2026-07-18] config | Untrack playtime.json
 - Updated `.gitignore` to exclude `playtime.json` from git tracking.
 - Untracked `playtime.json` from the repository using `git rm --cached` to keep it local-only.
+
+## [2026-07-18] doc | Professional README Update
+- Created a comprehensive and professional README.md outlining Game Machine features, portable directory layouts, internal components, custom decrypter, covers generator, keyboard/gamepad setup, and future development guidelines.
+
