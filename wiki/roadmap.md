@@ -13,31 +13,29 @@ The roadmap details the levels of development for Game Machine, tracking the com
 - [x] Auto-relaunch bug fix.
 - [x] Portable mode execution with proper `cwd`.
 
-## 🔜 Level 2 — Box Art & Cover Grid (In-Progress)
-- [ ] Render a cover image grid layout (PS5 dashboard style).
-- [ ] Read from a `covers/` directory with pattern `covers\<CONSOLE>\<GAME_NAME>.jpg`.
-- [ ] Implement a fallback placeholder box with title text when no cover exists.
-- [ ] Add horizontal (Left/Right) D-Pad navigation for grid items.
+## ✅ Level 2 — Box Art & Cover Grid (Completed)
+- [x] Render a cover image grid layout (PS5 dashboard style).
+- [x] Read from a `covers/` directory resolved dynamically under the library base folder.
+- [x] Implement a fallback placeholder box with title text when no cover exists.
+- [x] Add horizontal (Left/Right) D-Pad/keyboard navigation for grid items.
 
-## 🔜 Level 3 — Console Feel & Assets
-- [ ] Filter games by console tabs (using L1/R1 to cycle).
-- [ ] Bind "B button" to go back, and "Start button" to options.
-- [ ] Add background background music (BGM).
-- [ ] Add UI sounds (select, confirm).
-- [ ] Build a "Recently Played" section displaying history at the top.
+## ✅ Level 3 — Console Feel & Settings (Completed)
+- [x] Filter games by console tabs (using L1/R1 or Q/E to cycle).
+- [x] Unified Settings Panel modal with 5 tabs (Folders, Consoles, Display, System, About).
+- [x] Interactive first-run Setup Wizard to configure paths and custom consoles.
+- [x] Playtime tracking & database key merging across directories.
 
-## 🔜 Level 4 — System-Level Console Mode
-- [ ] Borderless fullscreen window mode.
-- [ ] Configure startup launching (`shell:startup` on Windows).
-- [ ] Add a shutdown option in the UI exit menu.
-- [ ] Cross-platform compatibility for Linux (using Flatpaks) to deploy on other laptops.
+## ✅ Level 4 — System-Level Console Mode (Completed)
+- [x] Borderless fullscreen window mode toggling.
+- [x] Configure startup launching via Windows Auto-Start Registry.
+- [x] Add lock, shutdown, restart, and exit options in the UI Settings/System menu.
 
-## 💡 Future Concepts
-- Automatic internet metadata scraping for cover art and descriptions.
-- Text search filter for quick ROM indexing.
-- Game playtime tracking (log session durations).
-- Multiple controller binding profiles.
-- Custom UI themes.
+## 🔜 Future Concepts & WIP
+- [ ] UI sounds (select, confirm) and background music (BGM).
+- [ ] Text search filter for quick ROM indexing.
+- [ ] Cross-platform compatibility for Linux (using Flatpaks) to deploy on Steam Deck/other laptops.
+- [ ] Multiple controller binding profiles.
+- [ ] Custom UI themes.
 
 ## Related Pages
 - [Architecture](file:///c:/Users/jadam/Desktop/Game-Machine/wiki/architecture.md)

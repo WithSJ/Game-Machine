@@ -2,6 +2,14 @@
 
 This file is a chronological log of operations performed on the Wiki (latest logs on top).
 
+## [2026-07-18] doc | Update complete README to reflect modern configuration features
+- Updated `README.md` to reflect the latest codebase additions, including the interactive Setup Wizard and the 5-tab Settings Panel.
+- Updated the system architecture flow diagram (Mermaid) to include configuration checks, first-run wizard, and Settings Panel pathways.
+- Documented the FOLDERS, CONSOLES, DISPLAY, SYSTEM, and ABOUT tabs of the Settings Panel.
+- Documented the portable settings and database storage behavior in `playtime.json`.
+- Updated the "Adding a New Console" guide to show how to register custom platforms through the GUI.
+- Updated the "Roadmap" section in both `README.md` and `wiki/roadmap.md` to mark Level 2, 3, and 4 milestones as completed (box art grid, filter tabs, settings panel, auto-start, lock/shutdown options).
+
 ## [2026-07-18] feature | Settings panel with 5 tabs (Folders/Consoles/Display/System/About)
 Added a comprehensive Settings button to the header and a tabbed settings modal that consolidates all configuration and system actions in one place. Previously, folder management and custom console setup were only available on the first-run Setup Wizard, grid size was a header button, auto-start was buried in the Exit menu, and power options were only in the Exit menu.
 
