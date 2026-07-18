@@ -13,12 +13,15 @@ from covers.iso_parser import extract_iso_images
 from covers.ps2_serial import get_ps2_serial
 
 
-def background_cover_generator_thread(games, colors, cover_cache):
+def background_cover_generator_thread(games, colors, cover_cache, consoles=None):
     """
     Unified background thread that:
     1. Scans PSP/PS3/PPSSPP/RPCS3 games and extracts high-resolution 3:4 composite covers from ISOs.
     2. Scans PS2/PCSX2 games, parses their serial, and downloads cover art from GitHub.
     """
+    if consoles is None:
+        consoles = {}
+
     # Dynamically create folders for all active consoles
     for g in games:
         try:
@@ -31,8 +34,18 @@ def background_cover_generator_thread(games, colors, cover_cache):
         console_name = g["console"].upper()
         covers_dir = os.path.join(COVERS_DIR, g["console"])
 
+        # Try to find the emulator executable associated with this console
+        emu_path = ""
+        cfg = consoles.get(g["console"])
+        if cfg:
+            emu_path = cfg.get("emulator", "").upper()
+
+        is_psp = any(x in console_name for x in ("PSP", "PPSSPP", "PPSSP")) or "PPSSPP" in emu_path
+        is_ps2 = any(x in console_name for x in ("PS2", "PCSX2")) or "PCSX2" in emu_path
+        is_ps3 = any(x in console_name for x in ("PS3", "RPCS3")) or "RPCS3" in emu_path
+
         # --- PSP/PPSSPP Cover Art Generation ---
-        if any(x in console_name for x in ("PSP", "PPSSPP", "PPSSP")) and path.lower().endswith(".iso"):
+        if is_psp and path.lower().endswith(".iso"):
             cover_exists = False
             for ext in (".jpg", ".jpeg", ".png"):
                 cov_path = os.path.join(covers_dir, g["name"] + ext)
@@ -98,7 +111,7 @@ def background_cover_generator_thread(games, colors, cover_cache):
                 print(f"[Cover Gen] Failed to generate PSP cover for {g['name']}: {e}")
                 
         # --- PS3/RPCS3 Cover Art Generation ---
-        elif any(x in console_name for x in ("PS3", "RPCS3")) and path.lower().endswith(".iso"):
+        elif is_ps3 and path.lower().endswith(".iso"):
             cover_exists = False
             for ext in (".jpg", ".jpeg", ".png"):
                 cov_path = os.path.join(covers_dir, g["name"] + ext)
@@ -164,7 +177,7 @@ def background_cover_generator_thread(games, colors, cover_cache):
                 print(f"[Cover Gen] Failed to generate PS3 cover for {g['name']}: {e}")
                 
         # --- PS2/PCSX2 Cover Art Downloading ---
-        elif any(x in console_name for x in ("PS2", "PCSX2")) and path.lower().endswith(".iso"):
+        elif is_ps2 and path.lower().endswith(".iso"):
             cover_exists = False
             for ext in (".jpg", ".jpeg", ".png"):
                 if os.path.isfile(os.path.join(covers_dir, g["name"] + ext)):

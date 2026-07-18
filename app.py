@@ -226,7 +226,7 @@ class GameMachine:
         if not self.needs_setup:
             threading.Thread(
                 target=background_cover_generator_thread,
-                args=(self.games, self.colors, self._cover_cache),
+                args=(self.games, self.colors, self._cover_cache, self.consoles),
                 daemon=True
             ).start()
 
@@ -811,7 +811,7 @@ class GameMachine:
         # Start background thread to extract PSP & PS2 cover arts now that games are loaded
         threading.Thread(
             target=background_cover_generator_thread,
-            args=(self.games, self.colors, self._cover_cache),
+            args=(self.games, self.colors, self._cover_cache, self.consoles),
             daemon=True
         ).start()
 

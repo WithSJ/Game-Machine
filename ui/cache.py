@@ -80,14 +80,17 @@ def get_cover_for(gm, game):
 
         # 2. Check the central covers directory
         if surf is None:
-            for ext in (".jpg", ".jpeg", ".png"):
-                p = os.path.join(COVERS_DIR, game["console"], game["name"] + ext)
-                if os.path.isfile(p):
-                    try:
-                        img = pygame.image.load(p).convert()
-                        surf = pygame.transform.smoothscale(img, (gm.card_w, gm.cover_h))
-                    except pygame.error:
-                        surf = None
+            for name_to_try in (game["name"], base_name):
+                for ext in (".jpg", ".jpeg", ".png"):
+                    p = os.path.join(COVERS_DIR, game["console"], name_to_try + ext)
+                    if os.path.isfile(p):
+                        try:
+                            img = pygame.image.load(p).convert()
+                            surf = pygame.transform.smoothscale(img, (gm.card_w, gm.cover_h))
+                        except pygame.error:
+                            surf = None
+                        break
+                if surf is not None:
                     break
                     
         gm._cover_cache[path] = surf
