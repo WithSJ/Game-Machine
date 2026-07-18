@@ -68,33 +68,63 @@ def add_custom_console_dialog(gm):
     if gm.fullscreen:
         pygame.display.set_mode((SCREEN_W, SCREEN_H))
 
-    # Step 1: Console Name
-    name = ask_string("Console Name", "Enter Console Name (e.g. Dolphin, Switch, PSP):")
-    if name:
-        name = name.strip().upper()
-        # Step 2: Emulator exe
-        exe = pick_file(title=f"Select {name} Emulator Executable (.exe)", filetypes=[("Executable Files", "*.exe")])
-        if exe:
-            exe = os.path.normpath(exe)
-            # Step 3: ROMs folder
-            roms = pick_directory(title=f"Select {name} Game ROMs Folder")
-            if roms:
-                roms = os.path.normpath(roms)
-                # Step 4: Extensions
-                exts_str = ask_string("File Extensions", "Enter comma-separated extensions (e.g. .iso,.cso,.chd):", initialvalue=".iso,.cso,.chd")
-                if not exts_str:
-                    exts_str = ".iso,.cso,.chd"
-                exts = [e.strip().lower() for e in exts_str.split(",") if e.strip()]
+    # Step 1: Select Emulator executable directly
+    exe = pick_file(title="Select Emulator Executable (.exe)", filetypes=[("Executable Files", "*.exe")])
+    if exe:
+        exe = os.path.normpath(exe)
+        
+        # Automatically determine console name from the emulator executable base name
+        exe_base = os.path.splitext(os.path.basename(exe))[0].lower()
+        if "ppsspp" in exe_base:
+            name = "PSP"
+        elif "pcsx2" in exe_base:
+            name = "PS2"
+        elif "rpcs3" in exe_base:
+            name = "PS3"
+        elif "dolphin" in exe_base:
+            name = "DOLPHIN"
+        elif "retroarch" in exe_base:
+            name = "RETROARCH"
+        elif "citra" in exe_base:
+            name = "CITRA"
+        elif "yuzu" in exe_base:
+            name = "YUZU"
+        elif "ryujinx" in exe_base:
+            name = "RYUJINX"
+        elif "xemu" in exe_base:
+            name = "XBOX"
+        elif "cemu" in exe_base:
+            name = "WIIU"
+        else:
+            name = exe_base.upper()
 
-                # Save custom console
-                gm.custom_consoles[name] = {
-                    "rom_folder": roms,
-                    "extensions": exts,
-                    "emulator": exe,
-                    "args": []
-                }
-                gm.toast = f"Added Custom Console: {name}"
-                gm.toast_until = pygame.time.get_ticks() + 2000
+        # Ensure name uniqueness
+        orig_name = name
+        counter = 2
+        while name in gm.custom_consoles or name in ("PSP", "PS2", "PS3"):
+            name = f"{orig_name} {counter}"
+            counter += 1
+
+        # Step 2: Select ROMs folder
+        roms = pick_directory(title=f"Select {name} Game ROMs Folder")
+        if roms:
+            roms = os.path.normpath(roms)
+            
+            # Step 3: Select Extensions
+            exts_str = ask_string("File Extensions", f"Enter comma-separated extensions for {name}:", initialvalue=".iso,.cso,.chd")
+            if not exts_str:
+                exts_str = ".iso,.cso,.chd"
+            exts = [e.strip().lower() for e in exts_str.split(",") if e.strip()]
+
+            # Save custom console
+            gm.custom_consoles[name] = {
+                "rom_folder": roms,
+                "extensions": exts,
+                "emulator": exe,
+                "args": []
+            }
+            gm.toast = f"Added Custom Console: {name}"
+            gm.toast_until = pygame.time.get_ticks() + 2000
 
     if gm.fullscreen:
         gm.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H), pygame.FULLSCREEN)
