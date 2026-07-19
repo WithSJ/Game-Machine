@@ -31,7 +31,7 @@ from core.launcher import launch_game
 from core.savestates import find_latest_save_state
 from core.autostart import is_auto_start_enabled, set_auto_start
 
-from covers.generator import background_cover_generator_thread
+from covers.generator import start_cover_generator_thread, process_cover_results
 
 from ui.theme import (
     COL_BG, COL_TEXT, COL_DIM, COL_DIMMER, COL_PANEL2, COL_CARD_BORDER,
@@ -170,7 +170,7 @@ class GameMachine:
         self.decrypting_active = False
         self.decryption_status = ""
         self.decryption_error = None
-        self.decryption_success = False
+        self.decryption_done = threading.Event()
         self.decryption_close_rect = pygame.Rect(0, 0, 0, 0)
 
         # Exit / Power menu state
@@ -237,11 +237,7 @@ class GameMachine:
 
         # Start background thread to extract PSP & PS2 cover arts only if setup is not needed
         if not self.needs_setup:
-            threading.Thread(
-                target=background_cover_generator_thread,
-                args=(self.games, self.colors, self._cover_cache, self.consoles),
-                daemon=True
-            ).start()
+            start_cover_generator_thread(self.games, self.consoles)
 
     def _draw_splash(self, status_text="Loading..."):
         draw_splash(self.screen, status_text)
@@ -383,9 +379,9 @@ class GameMachine:
         game = self.popup_game
         self.popup_active = False  # Close the prompt popup
         self.decrypting_active = True
-        self.decryption_success = False
         self.decryption_status = "Initializing..."
         self.decryption_error = None
+        self.decryption_done.clear()
         
         import threading
         from core.decrypter import run_decryption_thread
@@ -424,7 +420,11 @@ class GameMachine:
         self.popup_option_rects = []
         if game is None:
             return
-        elapsed = launch_game(game, self.consoles, load_state=load_state)
+        try:
+            elapsed = launch_game(game, self.consoles, load_state=load_state)
+        except Exception as e:
+            self.pop(f"Launch failed: {e}")
+            return
         rec = self.playdata.setdefault(game["path"], {"seconds": 0, "last": 0})
         rec["seconds"] += elapsed
         rec["last"] = int(time.time())
@@ -549,11 +549,7 @@ class GameMachine:
         self.switch_ms = pygame.time.get_ticks()
 
         if self.games:
-            threading.Thread(
-                target=background_cover_generator_thread,
-                args=(self.games, self.colors, self._cover_cache, self.consoles),
-                daemon=True
-            ).start()
+            start_cover_generator_thread(self.games, self.consoles)
 
     def _settings_add_folder(self):
         from ui.draw_setup import add_gm_folder_dialog
@@ -1089,11 +1085,7 @@ class GameMachine:
         self.switch_ms = pygame.time.get_ticks()
 
         # Start background thread to extract PSP & PS2 cover arts now that games are loaded
-        threading.Thread(
-            target=background_cover_generator_thread,
-            args=(self.games, self.colors, self._cover_cache, self.consoles),
-            daemon=True
-        ).start()
+        start_cover_generator_thread(self.games, self.consoles)
 
         self.needs_setup = False
         self.toast = "Setup Complete!"
@@ -1107,9 +1099,12 @@ class GameMachine:
             self.update_gamepad(now)
             self.update_scroll()
 
+            # Process cover generation queue (main thread only - pygame safe)
+            process_cover_results(self._cover_cache)
+
             # Check if decryption has finished successfully and launch
-            if getattr(self, "decryption_success", False):
-                self.decryption_success = False
+            if self.decryption_done.is_set():
+                self.decryption_done.clear()
                 self.decrypting_active = False
                 self._confirm_launch()
 

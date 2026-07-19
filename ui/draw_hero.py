@@ -24,10 +24,11 @@ def draw_hero(gm, now, anim_off):
     scr.blit(gm._hero_bg(accent), hero.topleft)
     pygame.draw.rect(scr, mix(COL_BG, accent, 0.30), hero, 1, border_radius=16)
 
-    scr.set_clip(hero)
     if cur:
         ghost = gm._ghost_text(cur["console"], accent)
         scr.blit(ghost, (hero.right - ghost.get_width() - 16, hero.y - 34))
+
+    scr.set_clip(hero)
     # pulsing glow line along the top edge (fades out to the right)
     pulse = 0.55 + 0.45 * abs(math.sin(now / 950))
     glow_w = int(hero.w * 0.6)

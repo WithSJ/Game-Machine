@@ -4,7 +4,7 @@ GAME MACHINE - Console discovery and game scanning.
 import os
 import re
 
-from core.config import BASE, CONSOLES, DEFAULT_EXTENSIONS
+from core.config import BASE, DEFAULT_EXTENSIONS
 
 
 # ============================================================

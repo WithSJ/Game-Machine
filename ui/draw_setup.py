@@ -19,28 +19,34 @@ from ui.helpers import parallelogram
 
 def pick_directory(title="Select Folder"):
     root = tk.Tk()
-    root.withdraw()
-    root.attributes("-topmost", True)
-    path = filedialog.askdirectory(title=title)
-    root.destroy()
+    try:
+        root.withdraw()
+        root.attributes("-topmost", True)
+        path = filedialog.askdirectory(title=title)
+    finally:
+        root.destroy()
     return path
 
 
 def pick_file(title="Select File", filetypes=None):
     root = tk.Tk()
-    root.withdraw()
-    root.attributes("-topmost", True)
-    path = filedialog.askopenfilename(title=title, filetypes=filetypes)
-    root.destroy()
+    try:
+        root.withdraw()
+        root.attributes("-topmost", True)
+        path = filedialog.askopenfilename(title=title, filetypes=filetypes)
+    finally:
+        root.destroy()
     return path
 
 
 def ask_string(title, prompt, initialvalue=""):
     root = tk.Tk()
-    root.withdraw()
-    root.attributes("-topmost", True)
-    val = simpledialog.askstring(title, prompt, initialvalue=initialvalue)
-    root.destroy()
+    try:
+        root.withdraw()
+        root.attributes("-topmost", True)
+        val = simpledialog.askstring(title, prompt, initialvalue=initialvalue)
+    finally:
+        root.destroy()
     return val
 
 

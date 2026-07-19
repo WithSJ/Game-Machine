@@ -1,6 +1,7 @@
 import os
 import shutil
 import subprocess
+import threading
 from core.config import BASE, PROJECT_DIR
 from core.scanner import clean_name
 
@@ -190,7 +191,7 @@ def run_decryption_thread(gm, game):
             return
             
         gm.decryption_status = "Decryption complete!"
-        gm.decryption_success = True
+        gm.decryption_done.set()
         
     except Exception as e:
         gm.decryption_error = f"Unexpected system error:\n{e}"

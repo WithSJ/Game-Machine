@@ -4,7 +4,7 @@ GAME MACHINE - UI asset caches and background/cover builders.
 import os
 import pygame
 
-from core.config import COVERS_DIR
+from core.config import get_covers_dir
 from ui.theme import (
     SCREEN_W, SCREEN_H, COL_BG, COL_BG_GLOW, COL_TEXT_DARK, HERO_RECT, COL_PANEL2, COL_CARD_BORDER, mix
 )
@@ -80,9 +80,10 @@ def get_cover_for(gm, game):
 
         # 2. Check the central covers directory
         if surf is None:
+            covers_dir = get_covers_dir()
             for name_to_try in (game["name"], base_name):
                 for ext in (".jpg", ".jpeg", ".png"):
-                    p = os.path.join(COVERS_DIR, game["console"], name_to_try + ext)
+                    p = os.path.join(covers_dir, game["console"], name_to_try + ext)
                     if os.path.isfile(p):
                         try:
                             img = pygame.image.load(p).convert()

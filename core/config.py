@@ -40,48 +40,18 @@ def get_covers_dir():
     """Return the covers directory under the currently-configured BASE."""
     return os.path.join(BASE, "covers")
 
-# Backwards-compatible module-level alias (refreshed by refresh_paths())
-COVERS_DIR = get_covers_dir()
-
 def refresh_paths():
     """Re-resolve BASE/COVERS_DIR from the on-disk settings file.
 
     Call this after the Setup Wizard updates `playtime.json` so that
     subsequent imports of COVERS_DIR / BASE reflect the new library folder.
     """
-    global settings, folders, custom_consoles, BASE, COVERS_DIR
+    global settings, folders, custom_consoles, BASE
     settings = load_settings()
     folders = settings.get("folders", [])
     custom_consoles = settings.get("custom_consoles", {})
     if folders:
         BASE = folders[0]
-    COVERS_DIR = get_covers_dir()
-
-# ============================================================
-# CONFIG - default console templates (used by core/scanner.py::discover_consoles)
-# ============================================================
-CONSOLES = {
-    "PSP": {
-        "rom_folder": os.path.join(BASE, "PPSSPP_ios"),
-        "extensions": [".iso", ".cso"],
-        "emulator": os.path.join(BASE, "PPSSPP_win", "PPSSPPWindows64.exe"),
-        "args": ["--fullscreen"],
-    },
-    "PS2": {
-        "rom_folder": os.path.join(BASE, "PCSX2_ios"),
-        "extensions": [".iso", ".chd"],
-        "emulator": os.path.join(BASE, "PCSX2_win", "pcsx2-qt.exe"),
-        # -batch = when the game closes, PCSX2 closes too (straight back here)
-        "args": ["-fullscreen", "-batch"],
-    },
-    "PS3": {
-        "rom_folder": os.path.join(BASE, "RPCS3_ios"),
-        "extensions": [".iso"],
-        "emulator": os.path.join(BASE, "RPCS3_win", "rpcs3.exe"),
-        # --no-gui = skip the RPCS3 main window, boot the game directly
-        "args": ["--no-gui"],
-    },
-}
 
 # Default game extensions for auto-detected consoles
 DEFAULT_EXTENSIONS = [".iso", ".cso", ".chd", ".bin"]
