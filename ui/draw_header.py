@@ -7,7 +7,7 @@ import pygame
 import pygame.gfxdraw
 
 from ui.theme import (
-    SCREEN_W, PAD_X, COL_TEXT, COL_DIMMER, COL_PANEL2, COL_CARD_BORDER,
+    SCREEN_W, PAD_X, COL_BG, COL_TEXT, COL_DIMMER, COL_PANEL2, COL_CARD_BORDER,
     COL_PAD_OK, COL_BTN_B, COL_BRAND, REC_COLOR, mix,
 )
 from ui.helpers import spaced_text

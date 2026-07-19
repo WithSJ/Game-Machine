@@ -6,7 +6,7 @@ import pygame
 
 from core.config import COVERS_DIR
 from ui.theme import (
-    SCREEN_W, SCREEN_H, COL_BG, COL_BG_GLOW, HERO_RECT, COL_PANEL2, COL_CARD_BORDER, mix
+    SCREEN_W, SCREEN_H, COL_BG, COL_BG_GLOW, COL_TEXT_DARK, HERO_RECT, COL_PANEL2, COL_CARD_BORDER, mix
 )
 
 
