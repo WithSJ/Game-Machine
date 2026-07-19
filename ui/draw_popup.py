@@ -13,7 +13,8 @@ import pygame.gfxdraw
 
 from ui.theme import (
     SCREEN_W, SCREEN_H, COL_BG, COL_PANEL, COL_PANEL2, COL_TEXT, COL_DIM,
-    COL_DIMMER, COL_CARD_BORDER, COL_BTN_B, COL_BTN_Y, mix, ease_out
+    COL_DIMMER, COL_CARD_BORDER, COL_BTN_B, COL_BTN_Y,
+    COL_DESTRUCTIVE, COL_TEXT_DARK, COL_TEXT_LIGHT, COL_TEXT_ON_RED, mix, ease_out
 )
 from ui.helpers import parallelogram
 
@@ -126,7 +127,7 @@ def _draw_launch_body(gm, scr, popup_r, pw, accent):
     gm.popup_yes_rect = yes_r
     if gm.popup_sel == 0:
         parallelogram(scr, yes_r, accent, cut=8)
-        yes_col = (11, 13, 19)
+        yes_col = COL_TEXT_DARK
     else:
         parallelogram(scr, yes_r, COL_PANEL2, cut=8)
         parallelogram(scr, yes_r, COL_CARD_BORDER, cut=8, width=1)
@@ -144,8 +145,8 @@ def _draw_launch_body(gm, scr, popup_r, pw, accent):
     no_r = pygame.Rect(bx + btn_w + btn_gap, by, btn_w, btn_h)
     gm.popup_no_rect = no_r
     if gm.popup_sel == 1:
-        parallelogram(scr, no_r, (200, 70, 80), cut=8)
-        no_col = (255, 240, 240)
+        parallelogram(scr, no_r, COL_DESTRUCTIVE, cut=8)
+        no_col = COL_TEXT_ON_RED
     else:
         parallelogram(scr, no_r, COL_PANEL2, cut=8)
         parallelogram(scr, no_r, COL_CARD_BORDER, cut=8, width=1)
@@ -177,7 +178,7 @@ def _draw_decrypt_body(gm, scr, popup_r, pw, accent):
     gm.popup_yes_rect = yes_r
     if gm.popup_sel == 0:
         parallelogram(scr, yes_r, accent, cut=8)
-        yes_col = (11, 13, 19)
+        yes_col = COL_TEXT_DARK
     else:
         parallelogram(scr, yes_r, COL_PANEL2, cut=8)
         parallelogram(scr, yes_r, COL_CARD_BORDER, cut=8, width=1)
@@ -194,8 +195,8 @@ def _draw_decrypt_body(gm, scr, popup_r, pw, accent):
     no_r = pygame.Rect(bx + btn_w + btn_gap, by, btn_w, btn_h)
     gm.popup_no_rect = no_r
     if gm.popup_sel == 1:
-        parallelogram(scr, no_r, (200, 70, 80), cut=8)
-        no_col = (255, 240, 240)
+        parallelogram(scr, no_r, COL_DESTRUCTIVE, cut=8)
+        no_col = COL_TEXT_ON_RED
     else:
         parallelogram(scr, no_r, COL_PANEL2, cut=8)
         parallelogram(scr, no_r, COL_CARD_BORDER, cut=8, width=1)
@@ -227,9 +228,9 @@ def _draw_launch_menu_body(gm, scr, popup_r, pw, ph, accent):
     # The LOAD STATE row is taller so it can fit a second line showing the
     # save-state filename without overlapping the main label.
     options = [
-        (ACT_LOAD_STATE, "LOAD LAST SAVE STATE", accent,         "resume", True),
-        (ACT_JUST_PLAY,  "JUST PLAY",            (231, 233, 238), "play",   False),
-        (ACT_CANCEL,     "CANCEL",               (200, 70, 80),   "cancel", False),
+        (ACT_LOAD_STATE, "LOAD LAST SAVE STATE", accent,            "resume", True),
+        (ACT_JUST_PLAY,  "JUST PLAY",            COL_TEXT_LIGHT,     "play",   False),
+        (ACT_CANCEL,     "CANCEL",               COL_DESTRUCTIVE,    "cancel", False),
     ]
 
     # Three stacked parallelogram buttons, centered horizontally.
@@ -256,7 +257,7 @@ def _draw_launch_menu_body(gm, scr, popup_r, pw, ph, accent):
         if on:
             parallelogram(scr, r, col, cut=10)
             # Dark text on the colored button for contrast (white on red for cancel)
-            text_col = (255, 240, 240) if action == ACT_CANCEL else (11, 13, 19)
+            text_col = COL_TEXT_ON_RED if action == ACT_CANCEL else COL_TEXT_DARK
             icon_col = text_col
             sub_col = mix(text_col, col, 0.35)
         else:

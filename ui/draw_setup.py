@@ -12,7 +12,7 @@ import pygame.gfxdraw
 from ui.theme import (
     SCREEN_W, SCREEN_H, COL_BG, COL_PANEL, COL_PANEL2, COL_TEXT,
     COL_DIM, COL_DIMMER, COL_CARD_BORDER, COL_BTN_Y, COL_BTN_B, COL_PAD_OK,
-    mix, ease_out
+    REC_COLOR, mix, ease_out
 )
 from ui.helpers import parallelogram
 
@@ -137,7 +137,7 @@ def add_custom_console_dialog(gm):
 
 def draw_setup(gm, now):
     scr = gm.screen
-    accent = (95, 212, 232)  # Cyan theme accent for setup screen
+    accent = REC_COLOR  # Cyan theme accent for setup screen
 
     # Draw dark background
     scr.fill(COL_BG)
@@ -263,7 +263,7 @@ def draw_setup(gm, now):
         elif is_selected:
             bg_col = accent
             border_col = accent
-            text_col = (7, 8, 12)
+            text_col = COL_BG
         else:
             bg_col = COL_PANEL2
             border_col = COL_CARD_BORDER
@@ -292,7 +292,7 @@ def draw_setup(gm, now):
 
 def draw_setup_help_modal(gm, now):
     scr = gm.screen
-    accent = (95, 212, 232)
+    accent = REC_COLOR
 
     # Dark screen overlay
     overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)

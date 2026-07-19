@@ -3,7 +3,7 @@ GAME MACHINE - Tab bar drawing.
 """
 import pygame
 
-from ui.theme import SCREEN_W, PAD_X, COL_BG, COL_DIM, COL_DIMMER, mix
+from ui.theme import SCREEN_W, PAD_X, COL_BG, COL_DIM, COL_DIMMER, COL_PANEL, COL_CARD_BORDER, mix
 from ui.helpers import parallelogram
 
 
@@ -25,8 +25,8 @@ def draw_tabs(gm, now):
             parallelogram(scr, r, mix(COL_BG, col, 0.16))
             parallelogram(scr, r, col, width=1)
         else:
-            parallelogram(scr, r, (18, 21, 28))
-            parallelogram(scr, r, (32, 36, 46), width=1)
+            parallelogram(scr, r, COL_PANEL)
+            parallelogram(scr, r, COL_CARD_BORDER, width=1)
         scr.blit(label, label.get_rect(center=r.center))
         gm.tab_rects.append((i, r))
         tx = r.right + 10

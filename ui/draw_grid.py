@@ -4,7 +4,7 @@ GAME MACHINE - Cover art grid drawing.
 import pygame
 
 from core.playdata import fmt_last
-from ui.theme import GRID_RECT, COL_BG, COL_PANEL, COL_CARD_BORDER, COL_DIMMER, COL_PAD_OK, mix
+from ui.theme import GRID_RECT, COL_BG, COL_PANEL, COL_CARD_BORDER, COL_DIMMER, COL_PAD_OK, COL_TEXT_LIGHT, COL_DIM, COL_FALLBACK, mix
 from ui.helpers import wrap_lines
 
 
@@ -22,7 +22,7 @@ def draw_grid(gm, now, anim_off):
         if gy + gm.card_h < GRID_RECT.y or gy > GRID_RECT.bottom:
             continue
         on = i == sel
-        c = gm.colors.get(g["console"], (150, 150, 150))
+        c = gm.colors.get(g["console"], COL_FALLBACK)
         lift = -6 if on else 0
         card = pygame.Rect(gx, gy + lift, gm.card_w, gm.card_h)
         rec = gm.game_stats(g)
@@ -53,7 +53,7 @@ def draw_grid(gm, now, anim_off):
         ty2 = card.y + gm.cover_h + 8
         name_lines = wrap_lines(g["name"], gm.f_card, gm.card_w - 20, max_lines=3)
         for line in name_lines:
-            scr.blit(gm.f_card.render(line, True, (231, 233, 238) if on else (185, 188, 195)),
+            scr.blit(gm.f_card.render(line, True, COL_TEXT_LIGHT if on else COL_DIM),
                      (card.x + 10, ty2))
             ty2 += 18
 

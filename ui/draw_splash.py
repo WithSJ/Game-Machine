@@ -4,7 +4,7 @@ GAME MACHINE - Splash/loading screen drawing.
 import pygame
 import pygame.gfxdraw
 
-from ui.theme import COL_BG, COL_DIM, COL_DIMMER, COL_PANEL2, SCREEN_W, SCREEN_H, mix
+from ui.theme import COL_BG, COL_BG_GLOW, COL_DIM, COL_DIMMER, COL_PANEL2, COL_TEXT, COL_BRAND, SCREEN_W, SCREEN_H, mix
 
 
 def draw_splash(screen, status_text="Loading..."):
@@ -15,7 +15,7 @@ def draw_splash(screen, status_text="Loading..."):
     cx, cy = SCREEN_W // 2, SCREEN_H // 2 - 40
     for i in range(60, 0, -1):
         t = i / 60
-        col = mix((20, 24, 35), COL_BG, t)
+        col = mix(COL_BG_GLOW, COL_BG, t)
         pygame.draw.circle(screen, col, (cx, cy), int(320 * t))
 
     # GAME MACHINE title - use a basic font (always available)
@@ -30,11 +30,11 @@ def draw_splash(screen, status_text="Loading..."):
 
     # Logo diamond
     diamond_pts = [(cx, cy - 65), (cx + 10, cy - 55), (cx, cy - 45), (cx - 10, cy - 55)]
-    pygame.gfxdraw.filled_polygon(screen, diamond_pts, (240, 112, 60))
-    pygame.gfxdraw.aapolygon(screen, diamond_pts, (240, 112, 60))
+    pygame.gfxdraw.filled_polygon(screen, diamond_pts, COL_BRAND)
+    pygame.gfxdraw.aapolygon(screen, diamond_pts, COL_BRAND)
 
     # Title text
-    title_s = title_font.render("GAME MACHINE", True, (238, 240, 244))
+    title_s = title_font.render("GAME MACHINE", True, COL_TEXT)
     screen.blit(title_s, (cx - title_s.get_width() // 2, cy - 30))
 
     # Subtitle
@@ -51,7 +51,7 @@ def draw_splash(screen, status_text="Loading..."):
     t = (pygame.time.get_ticks() % 1200) / 1200
     glow_x = bar_x + int(t * bar_w)
     glow_w = min(80, bar_w - int(t * bar_w))
-    pygame.draw.rect(screen, (240, 112, 60), (glow_x, bar_y, glow_w, bar_h), border_radius=2)
+    pygame.draw.rect(screen, COL_BRAND, (glow_x, bar_y, glow_w, bar_h), border_radius=2)
 
     # Status text
     stat_s = status_font.render(status_text, True, COL_DIM)

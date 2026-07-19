@@ -16,7 +16,7 @@ import pygame.gfxdraw
 from ui.theme import (
     SCREEN_W, SCREEN_H, COL_BG, COL_PANEL, COL_PANEL2, COL_TEXT,
     COL_DIM, COL_DIMMER, COL_CARD_BORDER, COL_PAD_OK, COL_BTN_B,
-    COL_BTN_Y, mix, ease_out
+    COL_BTN_Y, COL_BRAND, COL_DESTRUCTIVE, COL_FALLBACK, COL_TEXT_LIGHT, REC_COLOR, mix, ease_out
 )
 from ui.helpers import parallelogram
 
@@ -29,7 +29,7 @@ def draw_settings(gm, now):
         return
 
     scr = gm.screen
-    accent = (95, 212, 232)  # Cyan accent for settings
+    accent = REC_COLOR  # Cyan accent for settings
     anim_p = max(0.0, min(1.0, (now - gm.settings_anim_start) / 220))
     scale = ease_out(anim_p)
 
@@ -146,7 +146,7 @@ def _draw_option_row(gm, scr, x, y, w, h, label, value, col, action):
         pygame.draw.rect(scr, COL_PANEL2, r, border_radius=8)
         pygame.draw.rect(scr, COL_CARD_BORDER, r, 1, border_radius=8)
 
-    text_col = (231, 233, 238) if on else COL_DIM
+    text_col = COL_TEXT_LIGHT if on else COL_DIM
     lbl_s = gm.f_btn.render(label, True, text_col)
     scr.blit(lbl_s, (r.x + 16, r.centery - lbl_s.get_height() // 2))
 
@@ -179,7 +179,7 @@ def _draw_folders_tab(gm, scr, content_r):
     y = content_r.y
     row_h = 44
     row_w = content_r.w
-    col = (95, 212, 232)
+    col = REC_COLOR
 
     hdr_s = gm.f_tab.render("CONFIGURED FOLDERS", True, col)
     scr.blit(hdr_s, (content_r.x, y))
@@ -219,7 +219,7 @@ def _draw_consoles_tab(gm, scr, content_r):
         r = pygame.Rect(content_r.x, y, row_w, row_h)
         pygame.draw.rect(scr, COL_PANEL2, r, border_radius=8)
         pygame.draw.rect(scr, COL_CARD_BORDER, r, 1, border_radius=8)
-        col = gm.colors.get(name, (150, 150, 150))
+        col = gm.colors.get(name, COL_FALLBACK)
         chip_s = gm.f_chip.render(name, True, col)
         chip_r = pygame.Rect(r.x + 12, r.centery - 10, chip_s.get_width() + 10, 20)
         pygame.draw.rect(scr, mix(COL_BG, col, 0.2), chip_r, border_radius=4)
@@ -264,7 +264,7 @@ def _draw_display_tab(gm, scr, content_r):
     y = content_r.y
     row_h = 56
     row_w = content_r.w
-    col = (95, 212, 232)
+    col = REC_COLOR
 
     _draw_option_row(gm, scr, content_r.x, y, row_w, row_h,
                      "Grid Size", gm.settings.get("size", "medium").upper(),
@@ -286,23 +286,23 @@ def _draw_system_tab(gm, scr, content_r):
 
     _draw_option_row(gm, scr, content_r.x, y, row_w, row_h,
                      "Auto-Start", "ON" if gm.auto_start else "OFF",
-                     (79, 214, 166), "toggle_auto_start")
+                     COL_PAD_OK, "toggle_auto_start")
     y += row_h + 8
 
     _draw_option_row(gm, scr, content_r.x, y, row_w, row_h,
-                     "Lock Screen", "", (95, 212, 232), "lock_screen")
+                     "Lock Screen", "", REC_COLOR, "lock_screen")
     y += row_h + 8
 
     _draw_option_row(gm, scr, content_r.x, y, row_w, row_h,
-                     "Restart PC", "", (79, 214, 166), "restart")
+                     "Restart PC", "", COL_PAD_OK, "restart")
     y += row_h + 8
 
     _draw_option_row(gm, scr, content_r.x, y, row_w, row_h,
-                     "Shutdown PC", "", (200, 70, 80), "shutdown")
+                     "Shutdown PC", "", COL_DESTRUCTIVE, "shutdown")
     y += row_h + 8
 
     _draw_option_row(gm, scr, content_r.x, y, row_w, row_h,
-                     "Exit Game Machine", "", (240, 112, 60), "exit_gm")
+                     "Exit Game Machine", "", COL_BRAND, "exit_gm")
 
 
 # ============================================================
@@ -310,7 +310,7 @@ def _draw_system_tab(gm, scr, content_r):
 # ============================================================
 def _draw_about_tab(gm, scr, content_r):
     y = content_r.y + 20
-    col = (95, 212, 232)
+    col = REC_COLOR
 
     title = gm.f_hero.render("GAME MACHINE", True, COL_TEXT)
     scr.blit(title, (content_r.x + 20, y))

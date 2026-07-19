@@ -2,6 +2,37 @@
 
 This file is a chronological log of operations performed on the Wiki (latest logs on top).
 
+## [2026-07-19] refactor | Tokenize all raw RGB tuples in ui/*.py to enforce the design philosophy
+Audited every button and draw call across all 13 files in `ui/` against the UI Design Philosophy §2.4 ("MUST NOT introduce raw RGB tuples in draw code"). Found 30+ violations where colors were hardcoded instead of sourced from `ui/theme.py` tokens. All fixed.
+
+### New tokens added to `ui/theme.py`
+- `COL_BRAND = (240, 112, 60)` — Game Machine brand orange (was hardcoded in header logo, splash, exit menu, settings)
+- `COL_DESTRUCTIVE = (200, 70, 80)` — destructive red fill for CANCEL/NO/SHUTDOWN buttons (was hardcoded in popup, exit menu, settings)
+- `COL_TEXT_DARK = (11, 13, 19)` — dark text on accent fills (was hardcoded in hero PLAY, popup YES, launch menu)
+- `COL_TEXT_LIGHT = (231, 233, 238)` — slightly dimmer than COL_TEXT; used for selected list-row labels (was hardcoded in exit menu, settings, grid, toast, popup)
+- `COL_TEXT_ON_RED = (255, 240, 240)` — light text on the destructive red fill (was hardcoded in popup NO/CANCEL)
+- `COL_KNOB_OFF = (140, 143, 150)` — toggle knob in the OFF position (was hardcoded in exit menu)
+- `COL_FALLBACK = (150, 150, 150)` — neutral gray for unknown console / missing color (was hardcoded in grid, settings)
+
+### Files fixed (13 files, 30+ raw RGB tuples eliminated)
+- `ui/draw_header.py` — EXIT button: replaced `(60, 20, 25)` dark red fill with `mix(COL_BG, COL_BTN_B, 0.15)`; replaced `(255, 120, 130)` and `(200, 70, 80)` with `COL_BTN_B`. SETTINGS button: replaced `(95, 212, 232)` with `REC_COLOR`. Logo diamond: replaced `(240, 112, 60)` with `COL_BRAND`. Clock text: replaced `(213, 215, 220)` with `COL_TEXT`.
+- `ui/draw_exit_menu.py` — 4 option colors replaced with `COL_BRAND` / `REC_COLOR` / `COL_PAD_OK` / `COL_DESTRUCTIVE`. Selected label: replaced `(231, 233, 238)` with `COL_TEXT_LIGHT`. Toggle switch: replaced `(79, 214, 166)` with `COL_PAD_OK`, `(231, 233, 238)` with `COL_TEXT_LIGHT`, `(140, 143, 150)` with `COL_KNOB_OFF`.
+- `ui/draw_hero.py` — PLAY triangle + text: replaced `(11, 13, 19)` with `COL_TEXT_DARK`. DETAILS outline: replaced `(58, 62, 72)` with `COL_CARD_BORDER`. DETAILS text: replaced `(185, 188, 194)` with `COL_DIM`. Hero title: replaced `(253, 253, 253)` with `COL_TEXT`. Meta text: replaced `(155, 160, 170)` with `COL_DIM`.
+- `ui/draw_tabs.py` — Unselected tab fill: replaced `(18, 21, 28)` with `COL_PANEL`. Unselected tab border: replaced `(32, 36, 46)` with `COL_CARD_BORDER`.
+- `ui/draw_settings.py` — Accent: replaced all 5 occurrences of `(95, 212, 232)` with `REC_COLOR`. Option row text: replaced `(231, 233, 238)` with `COL_TEXT_LIGHT`. System tab actions: replaced `(79, 214, 166)` with `COL_PAD_OK`, `(200, 70, 80)` with `COL_DESTRUCTIVE`, `(240, 112, 60)` with `COL_BRAND`. Fallback console color: replaced `(150, 150, 150)` with `COL_FALLBACK`.
+- `ui/draw_setup.py` — Accent: replaced 2 occurrences of `(95, 212, 232)` with `REC_COLOR`. Selected text: replaced `(7, 8, 12)` with `COL_BG`.
+- `ui/draw_splash.py` — Logo diamond + loading bar: replaced `(240, 112, 60)` with `COL_BRAND`. Title: replaced `(238, 240, 244)` with `COL_TEXT`. Radial glow: replaced `(20, 24, 35)` with `COL_BG_GLOW`.
+- `ui/draw_toast.py` — Border: replaced `(44, 47, 56)` with `COL_CARD_BORDER`. Toast text: replaced `(231, 233, 238)` with `COL_TEXT_LIGHT`.
+- `ui/draw_grid.py` — Card name: replaced `(231, 233, 238)` / `(185, 188, 195)` with `COL_TEXT_LIGHT` / `COL_DIM`. Fallback console color: replaced `(150, 150, 150)` with `COL_FALLBACK`.
+- `ui/draw_footer.py` — L1 R1 pill text: replaced `(185, 188, 194)` with `COL_DIM`.
+- `ui/draw_popup.py` — 2-option YES button: replaced `(11, 13, 19)` with `COL_TEXT_DARK`. 2-option NO button: replaced `(200, 70, 80)` with `COL_DESTRUCTIVE` and `(255, 240, 240)` with `COL_TEXT_ON_RED`. 3-option launch_menu: replaced `(231, 233, 238)` with `COL_TEXT_LIGHT`, `(200, 70, 80)` with `COL_DESTRUCTIVE`, `(255, 240, 240)` with `COL_TEXT_ON_RED`, `(11, 13, 19)` with `COL_TEXT_DARK`.
+- `ui/cache.py` — Hero background gradient: replaced `(16, 19, 25)` with `COL_BG_GLOW`, `(11, 13, 19)` with `COL_TEXT_DARK`. Placeholder label: replaced `(58, 62, 72)` with `COL_CARD_BORDER`.
+
+### Verification
+- Automated scan confirms **zero raw RGB tuples** remaining in `ui/*.py` (excluding `theme.py` which defines them).
+- All 13 modified files compile cleanly.
+- Offscreen render test confirms all 3 launch_menu selections, the 2-option launch popup, and the exit menu all render with the correct token-sourced colors.
+
 ## [2026-07-19] doc | Establish UI Design Philosophy as a mandatory skill
 Created a single source of truth for Game Machine's visual design and made it a loadable opencode skill + a wiki page + a mandatory workflow rule in `AGENTS.md`. The launch-game 3-option popup (`ui/draw_popup.py::_draw_launch_menu_body`) is the canonical reference implementation.
 

@@ -7,7 +7,7 @@ import pygame
 import pygame.gfxdraw
 
 from core.playdata import fmt_dur, fmt_last
-from ui.theme import HERO_RECT, COL_BG, mix
+from ui.theme import HERO_RECT, COL_BG, COL_DIM, COL_TEXT, COL_CARD_BORDER, COL_TEXT_DARK, COL_TEXT_LIGHT, mix
 from ui.helpers import spaced_text, parallelogram
 
 
@@ -45,31 +45,31 @@ def draw_hero(gm, now, anim_off):
                    else f"{cur['console']} CHANNEL")
         spaced_text(scr, gm.f_channel, channel, accent, (hero.x + 32, hero.y + 18), 3)
         scr.set_clip(hero)
-        title = gm.f_hero.render(cur["name"], True, (253, 253, 253))
+        title = gm.f_hero.render(cur["name"], True, COL_TEXT)
         scr.blit(title, (hero.x + 30, hero.y + 40))
         scr.set_clip(None)
         if rec:
             meta_txt = f"Last played {fmt_last(rec['last'])} · {fmt_dur(rec['seconds'])} played"
         else:
             meta_txt = "Not played yet · Press A to start"
-        meta = gm.f_meta.render(meta_txt, True, (155, 160, 170))
+        meta = gm.f_meta.render(meta_txt, True, COL_DIM)
         scr.blit(meta, (hero.x + 31, hero.y + 88))
 
         by = hero.bottom - 52
-        play_label = gm.f_btn.render("RESUME" if rec else "PLAY", True, (11, 13, 19))
+        play_label = gm.f_btn.render("RESUME" if rec else "PLAY", True, COL_TEXT_DARK)
         gm.play_rect = pygame.Rect(hero.x + 30, by, play_label.get_width() + 70, 38)
         parallelogram(scr, gm.play_rect, accent, cut=8)
         cy = gm.play_rect.centery
         tri_x = gm.play_rect.x + 24
         tri_pts = [(tri_x, cy - 6), (tri_x, cy + 6), (tri_x + 10, cy)]
-        pygame.gfxdraw.filled_polygon(scr, tri_pts, (11, 13, 19))
-        pygame.gfxdraw.aapolygon(scr, tri_pts, (11, 13, 19))
+        pygame.gfxdraw.filled_polygon(scr, tri_pts, COL_TEXT_DARK)
+        pygame.gfxdraw.aapolygon(scr, tri_pts, COL_TEXT_DARK)
         scr.blit(play_label, (tri_x + 18, cy - play_label.get_height() // 2))
 
-        det_label = gm.f_btn.render("DETAILS", True, (185, 188, 194))
+        det_label = gm.f_btn.render("DETAILS", True, COL_DIM)
         gm.details_rect = pygame.Rect(gm.play_rect.right + 12, by,
                                         det_label.get_width() + 44, 38)
-        parallelogram(scr, gm.details_rect, (58, 62, 72), cut=8, width=1)
+        parallelogram(scr, gm.details_rect, COL_CARD_BORDER, cut=8, width=1)
         scr.blit(det_label, det_label.get_rect(center=gm.details_rect.center))
     else:
         spaced_text(scr, gm.f_channel, "GAME MACHINE", accent, (hero.x + 32, hero.y + 22), 3)
@@ -77,5 +77,5 @@ def draw_hero(gm, now, anim_off):
             t1, t2 = "Nothing played yet", "Pick a console tab and start a game - it will show up here."
         else:
             t1, t2 = "No games found", "Check the CONFIG paths at the top of console.py."
-        scr.blit(gm.f_hero.render(t1, True, (253, 253, 253)), (hero.x + 30, hero.y + 48))
-        scr.blit(gm.f_meta.render(t2, True, (155, 160, 170)), (hero.x + 31, hero.y + 100))
+        scr.blit(gm.f_hero.render(t1, True, COL_TEXT), (hero.x + 30, hero.y + 48))
+        scr.blit(gm.f_meta.render(t2, True, COL_DIM), (hero.x + 31, hero.y + 100))

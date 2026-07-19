@@ -5,7 +5,8 @@ import pygame
 
 from ui.theme import (
     SCREEN_W, SCREEN_H, COL_BG, COL_PANEL, COL_PANEL2, COL_TEXT, COL_DIM,
-    COL_DIMMER, COL_CARD_BORDER, COL_BTN_B, mix, ease_out
+    COL_DIMMER, COL_CARD_BORDER, COL_BTN_B, COL_PAD_OK, COL_BRAND,
+    COL_DESTRUCTIVE, COL_TEXT_LIGHT, COL_KNOB_OFF, REC_COLOR, mix, ease_out
 )
 
 
@@ -55,10 +56,10 @@ def draw_exit_menu(gm, now):
 
         # Menu options
         options = [
-            ("EXIT GAME MACHINE", (240, 112, 60),  "[X]"),
-            ("LOCK SCREEN",       (95, 212, 232),  "[LOCK]"),
-            ("RESTART",           (79, 214, 166),  "[RST]"),
-            ("SHUTDOWN",          (200, 70, 80),   "[OFF]"),
+            ("EXIT GAME MACHINE", COL_BRAND,       "[X]"),
+            ("LOCK SCREEN",       REC_COLOR,       "[LOCK]"),
+            ("RESTART",           COL_PAD_OK,       "[RST]"),
+            ("SHUTDOWN",          COL_DESTRUCTIVE,  "[OFF]"),
         ]
         gm.exit_menu_option_rects = []
         opt_w, opt_h = pw - 60, 44
@@ -88,7 +89,7 @@ def draw_exit_menu(gm, now):
             icon_x = r.x + 16
             scr.blit(icon_s, (icon_x, r.centery - icon_s.get_height() // 2))
             # Label - offset by actual icon width + 14px padding
-            lbl_s = gm.f_popup_btn.render(label, True, (231, 233, 238) if on else COL_DIM)
+            lbl_s = gm.f_popup_btn.render(label, True, COL_TEXT_LIGHT if on else COL_DIM)
             lbl_x = icon_x + icon_s.get_width() + 14
             scr.blit(lbl_s, (lbl_x, r.centery - lbl_s.get_height() // 2))
 
@@ -111,16 +112,16 @@ def draw_exit_menu(gm, now):
         gm.exit_menu_autostart_rect = sw_r
 
         if gm.auto_start:
-            pygame.draw.rect(scr, (79, 214, 166), sw_r, border_radius=12)
+            pygame.draw.rect(scr, COL_PAD_OK, sw_r, border_radius=12)
             # Knob on right
-            pygame.draw.circle(scr, (231, 233, 238), (sw_x + sw_w - 12, sw_y + 12), 9)
+            pygame.draw.circle(scr, COL_TEXT_LIGHT, (sw_x + sw_w - 12, sw_y + 12), 9)
         else:
             pygame.draw.rect(scr, COL_DIMMER, sw_r, border_radius=12)
             # Knob on left
-            pygame.draw.circle(scr, (140, 143, 150), (sw_x + 12, sw_y + 12), 9)
+            pygame.draw.circle(scr, COL_KNOB_OFF, (sw_x + 12, sw_y + 12), 9)
 
         on_off = gm.f_chip.render("ON" if gm.auto_start else "OFF", True,
-                                    (79, 214, 166) if gm.auto_start else COL_DIMMER)
+                                    COL_PAD_OK if gm.auto_start else COL_DIMMER)
         scr.blit(on_off, (sw_x - on_off.get_width() - 8, tog_y + 5))
 
         # Hint text

@@ -36,9 +36,9 @@ def get_hero_bg(gm, accent):
     if accent not in gm._hero_cache:
         w, h = HERO_RECT.size
         surf = pygame.Surface((w, h), pygame.SRCALPHA)
-        c_a = mix((16, 19, 25), accent, 0.16)
-        c_b = (16, 19, 25)
-        c_c = (11, 13, 19)
+        c_a = mix(COL_BG_GLOW, accent, 0.16)
+        c_b = COL_BG_GLOW
+        c_c = COL_TEXT_DARK
         for x in range(w):
             t = x / w
             col = mix(c_a, c_b, t / 0.55) if t < 0.55 else mix(c_b, c_c, (t - 0.55) / 0.45)
@@ -105,7 +105,7 @@ def get_placeholder(gm, accent, active):
         for i in range(-gm.cover_h, gm.card_w + gm.cover_h, 24):
             pygame.draw.line(s, stripe, (i, gm.cover_h), (i + gm.cover_h, 0), 12)
         label = gm.f_mono.render("COVER ART", True,
-                                   accent if active else (58, 62, 72))
+                                   accent if active else COL_CARD_BORDER)
         if not active:
             label.set_alpha(255)
         s.blit(label, label.get_rect(center=(gm.card_w // 2, gm.cover_h // 2)))

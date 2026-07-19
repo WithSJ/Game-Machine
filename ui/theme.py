@@ -22,6 +22,15 @@ COL_TOAST_EDGE = (240, 112, 60)
 COL_BTN_B = (240, 149, 149)
 COL_BTN_Y = (250, 199, 117)
 
+# Semantic aliases used across buttons, toggles, and branded elements
+COL_BRAND = (240, 112, 60)        # Game Machine orange (logo diamond, EXIT GAME MACHINE action)
+COL_DESTRUCTIVE = (200, 70, 80)   # CANCEL / NO / SHUTDOWN fill
+COL_TEXT_DARK = (11, 13, 19)      # Dark text placed on a colored fill for contrast
+COL_TEXT_LIGHT = (231, 233, 238)  # Slightly dimmer than COL_TEXT; used for selected list-row labels
+COL_TEXT_ON_RED = (255, 240, 240) # Light text placed on the destructive red fill
+COL_KNOB_OFF = (140, 143, 150)    # Toggle knob in the OFF position
+COL_FALLBACK = (150, 150, 150)    # Neutral gray for unknown console / missing color
+
 REC_COLOR = (95, 212, 232)  # RECENTS tab accent
 CONSOLE_COLORS = {
     "PSP": (240, 112, 60),   # orange

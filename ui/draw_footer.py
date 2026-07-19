@@ -27,7 +27,7 @@ def draw_footer(gm, now):
     hx = key_hint(scr, gm.f_mono, gm.f_hint, hx, FOOTER_Y + 14, "S", COL_TEXT, "Size")
     pill = pygame.Rect(hx, FOOTER_Y + 14, 44, 18)
     pygame.draw.rect(scr, COL_DIM, pill, 1, border_radius=9)
-    pl = gm.f_mono.render("L1 R1", True, (185, 188, 194))
+    pl = gm.f_mono.render("L1 R1", True, COL_DIM)
     scr.blit(pl, pl.get_rect(center=pill.center))
     scr.blit(gm.f_hint.render("Switch console", True, COL_DIM),
              (pill.right + 8, FOOTER_Y + 15))

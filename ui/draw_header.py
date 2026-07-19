@@ -8,7 +8,7 @@ import pygame.gfxdraw
 
 from ui.theme import (
     SCREEN_W, PAD_X, COL_TEXT, COL_DIMMER, COL_PANEL2, COL_CARD_BORDER,
-    COL_PAD_OK, mix,
+    COL_PAD_OK, COL_BTN_B, COL_BRAND, REC_COLOR, mix,
 )
 from ui.helpers import spaced_text
 
@@ -20,37 +20,37 @@ def draw_header(gm, now):
 
     # Logo diamond + title
     logo_pts = [(PAD_X + 7, 26), (PAD_X + 14, 33), (PAD_X + 7, 40), (PAD_X, 33)]
-    pygame.gfxdraw.filled_polygon(scr, logo_pts, (240, 112, 60))
-    pygame.gfxdraw.aapolygon(scr, logo_pts, (240, 112, 60))
+    pygame.gfxdraw.filled_polygon(scr, logo_pts, COL_BRAND)
+    pygame.gfxdraw.aapolygon(scr, logo_pts, COL_BRAND)
     x_end = spaced_text(scr, gm.f_logo, "GAME MACHINE", COL_TEXT, (PAD_X + 26, 20), 5)
     sub = gm.f_sub.render("v1.1.0 · EMULATOR FRONTEND", True, COL_DIMMER)
     scr.blit(sub, (x_end + 12, 30))
 
-    # EXIT button (rightmost)
+    # EXIT button (rightmost) — archetype B: rounded chip, destructive semantic
     gm.exit_rect = pygame.Rect(int(SCREEN_W - PAD_X - 58), 20, 58, 28)
     exit_focused = gm.header_focus == 2
-    pygame.draw.rect(scr, (60, 20, 25), gm.exit_rect, border_radius=6)
+    pygame.draw.rect(scr, mix(COL_BG, COL_BTN_B, 0.15), gm.exit_rect, border_radius=6)
     if exit_focused:
-        pygame.draw.rect(scr, (255, 120, 130), gm.exit_rect, 2, border_radius=6)
+        pygame.draw.rect(scr, COL_BTN_B, gm.exit_rect, 2, border_radius=6)
     else:
-        pygame.draw.rect(scr, (200, 70, 80), gm.exit_rect, 1, border_radius=6)
-    ex = gm.f_sub.render("EXIT", True, (255, 120, 130))
+        pygame.draw.rect(scr, COL_BTN_B, gm.exit_rect, 1, border_radius=6)
+    ex = gm.f_sub.render("EXIT", True, COL_BTN_B)
     scr.blit(ex, ex.get_rect(center=gm.exit_rect.center))
 
-    # SETTINGS button (left of EXIT)
+    # SETTINGS button (left of EXIT) — archetype B
     settings_focused = gm.header_focus == 1
-    settings_label = gm.f_sub.render("SETTINGS", True, (95, 212, 232))
+    settings_label = gm.f_sub.render("SETTINGS", True, REC_COLOR)
     sw = settings_label.get_width() + 24
     gm.settings_rect = pygame.Rect(gm.exit_rect.x - 10 - sw, 20, sw, 28)
     pygame.draw.rect(scr, COL_PANEL2, gm.settings_rect, border_radius=6)
     if settings_focused:
-        pygame.draw.rect(scr, (95, 212, 232), gm.settings_rect, 2, border_radius=6)
+        pygame.draw.rect(scr, REC_COLOR, gm.settings_rect, 2, border_radius=6)
     else:
         pygame.draw.rect(scr, COL_CARD_BORDER, gm.settings_rect, 1, border_radius=6)
     scr.blit(settings_label, settings_label.get_rect(center=gm.settings_rect.center))
 
     # Clock (left of SETTINGS)
-    clock_s = gm.f_clock.render(time.strftime("%I:%M %p").lstrip("0"), True, (213, 215, 220))
+    clock_s = gm.f_clock.render(time.strftime("%I:%M %p").lstrip("0"), True, COL_TEXT)
     cx = gm.settings_rect.x - 18 - clock_s.get_width()
     scr.blit(clock_s, (cx, 24))
 
