@@ -28,6 +28,7 @@ ui.theme.GRID_RECT = pygame.Rect(ui.theme.PAD_X, 310, int(ui.theme.SCREEN_W - 2 
 from core.scanner import discover_consoles, scan_games
 from core.playdata import load_playdata, save_playdata, fmt_dur, fmt_last
 from core.launcher import launch_game
+from core.savestates import find_latest_save_state
 from core.autostart import is_auto_start_enabled, set_auto_start
 
 from covers.generator import background_cover_generator_thread
@@ -159,11 +160,13 @@ class GameMachine:
         # Confirmation popup state
         self.popup_active = False
         self.popup_game = None
-        self.popup_sel = 0          # 0 = YES, 1 = NO
+        self.popup_sel = 0          # 0 = YES (or LOAD STATE), 1 = NO (or JUST PLAY), 2 = CANCEL
         self.popup_anim_start = 0
         self.popup_yes_rect = pygame.Rect(0, 0, 0, 0)
         self.popup_no_rect = pygame.Rect(0, 0, 0, 0)
-        self.popup_type = "launch"  # "launch" or "decrypt"
+        self.popup_option_rects = []   # 3-option menu: list of (idx, action, rect)
+        self.popup_save_state = None   # path to the latest save state (when popup_type == "launch_menu")
+        self.popup_type = "launch"     # "launch", "decrypt", or "launch_menu"
         self.decrypting_active = False
         self.decryption_status = ""
         self.decryption_error = None
@@ -357,12 +360,22 @@ class GameMachine:
         game = L[min(self.sel, len(L) - 1)]
         self.popup_active = True
         self.popup_game = game
-        self.popup_sel = 0  # default to YES
+        self.popup_sel = 0  # default to the first (primary) action
         self.popup_anim_start = pygame.time.get_ticks()
-        
-        # Check if PS3 game and first time launching (needs decryption)
+        self.popup_option_rects = []
+        self.popup_save_state = None
+
+        # First-time encrypted PS3 games still get the decrypt prompt.
         if game["console"] == "PS3" and self.game_stats(game) is None:
             self.popup_type = "decrypt"
+            return
+
+        # Otherwise look for an existing save state. If found, show the 3-option
+        # launch menu; if not, fall back to the 2-option YES/NO popup.
+        state_path = find_latest_save_state(game, self.consoles)
+        if state_path and os.path.isfile(state_path):
+            self.popup_type = "launch_menu"
+            self.popup_save_state = state_path
         else:
             self.popup_type = "launch"
 
@@ -383,24 +396,51 @@ class GameMachine:
         )
         self.decryption_thread.start()
 
-    def _confirm_launch(self):
+    def _popup_activate(self):
+        """Take the currently-selected option in the launch popup and act on it."""
+        if self.popup_type == "launch_menu":
+            # 0 = LOAD LAST SAVE STATE, 1 = JUST PLAY, 2 = CANCEL
+            if self.popup_sel == 0:
+                self._confirm_launch(load_state=self.popup_save_state)
+            elif self.popup_sel == 1:
+                self._confirm_launch(load_state=None)
+            else:
+                self._cancel_popup()
+        else:
+            # 2-option popup (launch / decrypt): YES -> start, NO -> cancel
+            if self.popup_sel == 0:
+                if self.popup_type == "decrypt":
+                    self._start_decryption()
+                else:
+                    self._confirm_launch()
+            else:
+                self._cancel_popup()
+
+    def _confirm_launch(self, load_state=None):
         game = self.popup_game
         self.popup_active = False
         self.popup_game = None
+        self.popup_save_state = None
+        self.popup_option_rects = []
         if game is None:
             return
-        elapsed = launch_game(game, self.consoles)
+        elapsed = launch_game(game, self.consoles, load_state=load_state)
         rec = self.playdata.setdefault(game["path"], {"seconds": 0, "last": 0})
         rec["seconds"] += elapsed
         rec["last"] = int(time.time())
         save_playdata(self.playdata)
         self.pad_state = {"x": {"dir": 0, "next": 0}, "y": {"dir": 0, "next": 0}}
-        self.pop(f"Welcome back · {fmt_dur(elapsed)} session")
+        if load_state:
+            self.pop(f"Welcome back \u00b7 {fmt_dur(elapsed)} session (loaded save state)")
+        else:
+            self.pop(f"Welcome back \u00b7 {fmt_dur(elapsed)} session")
         self.ignore_input_until = pygame.time.get_ticks() + 1000
 
     def _cancel_popup(self):
         self.popup_active = False
         self.popup_game = None
+        self.popup_save_state = None
+        self.popup_option_rects = []
 
     def _show_exit_menu(self):
         if self.exit_menu_active:
@@ -666,50 +706,60 @@ class GameMachine:
 
         # ---- Popup input handling ----
         if self.popup_active:
+            n_opts = 3 if getattr(self, "popup_type", "launch") == "launch_menu" else 2
             if e.type == pygame.KEYDOWN:
                 if e.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
-                    if self.popup_sel == 0:
-                        if getattr(self, "popup_type", "launch") == "decrypt":
-                            self._start_decryption()
-                        else:
-                            self._confirm_launch()
-                    else:
-                        self._cancel_popup()
+                    self._popup_activate()
                 elif e.key == pygame.K_ESCAPE:
                     self._cancel_popup()
+                elif e.key in (pygame.K_UP, pygame.K_w):
+                    self.popup_sel = (self.popup_sel - 1) % n_opts
+                elif e.key in (pygame.K_DOWN, pygame.K_s):
+                    self.popup_sel = (self.popup_sel + 1) % n_opts
                 elif e.key in (pygame.K_LEFT, pygame.K_RIGHT):
-                    self.popup_sel = 1 - self.popup_sel
+                    # For 2-option popups keep horizontal toggle; for 3-option
+                    # treat left/right as up/down so a d-pad in any direction works.
+                    if n_opts == 2:
+                        self.popup_sel = 1 - self.popup_sel
+                    else:
+                        self.popup_sel = (self.popup_sel + (1 if e.key == pygame.K_RIGHT else -1)) % n_opts
             elif e.type == pygame.JOYBUTTONDOWN:
                 if e.button == 0:
-                    if self.popup_sel == 0:
-                        if getattr(self, "popup_type", "launch") == "decrypt":
-                            self._start_decryption()
-                        else:
-                            self._confirm_launch()
-                    else:
-                        self._cancel_popup()
+                    self._popup_activate()
                 elif e.button == 1:
                     self._cancel_popup()
             elif e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
                 if not getattr(e, "touch", False):
-                    if self.popup_yes_rect.collidepoint(e.pos):
-                        if getattr(self, "popup_type", "launch") == "decrypt":
-                            self._start_decryption()
-                        else:
-                            self._confirm_launch()
-                    elif self.popup_no_rect.collidepoint(e.pos):
-                        self._cancel_popup()
+                    if n_opts == 3 and self.popup_option_rects:
+                        for idx, action, r in self.popup_option_rects:
+                            if r.collidepoint(e.pos):
+                                self.popup_sel = idx
+                                self._popup_activate()
+                                break
+                    else:
+                        if self.popup_yes_rect.collidepoint(e.pos):
+                            self.popup_sel = 0
+                            self._popup_activate()
+                        elif self.popup_no_rect.collidepoint(e.pos):
+                            self.popup_sel = 1
+                            self._popup_activate()
             elif e.type == pygame.FINGERUP:
                 if self.touch_start is not None and not getattr(self, 'touch_moved', False):
                     w, h = self.screen.get_size()
                     pos = (e.x * w, e.y * h)
-                    if self.popup_yes_rect.collidepoint(pos):
-                        if getattr(self, "popup_type", "launch") == "decrypt":
-                            self._start_decryption()
-                        else:
-                            self._confirm_launch()
-                    elif self.popup_no_rect.collidepoint(pos):
-                        self._cancel_popup()
+                    if n_opts == 3 and self.popup_option_rects:
+                        for idx, action, r in self.popup_option_rects:
+                            if r.collidepoint(pos):
+                                self.popup_sel = idx
+                                self._popup_activate()
+                                break
+                    else:
+                        if self.popup_yes_rect.collidepoint(pos):
+                            self.popup_sel = 0
+                            self._popup_activate()
+                        elif self.popup_no_rect.collidepoint(pos):
+                            self.popup_sel = 1
+                            self._popup_activate()
             return
 
         # ---- Exit menu input handling ----

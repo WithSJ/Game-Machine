@@ -107,17 +107,30 @@ def update_gamepad_axes(gm, now):
     if gm.popup_active:
         j = gm.joystick
         if j is not None:
-            dx = 0
+            dx = dy = 0
             if j.get_numhats() > 0:
-                hx, _ = j.get_hat(0)
-                dx = hx
+                hx, hy = j.get_hat(0)
+                dx, dy = hx, -hy
             if dx == 0 and j.get_numaxes() > 0:
                 ax = j.get_axis(0)
                 dx = 1 if ax > AXIS_DEADZONE else (-1 if ax < -AXIS_DEADZONE else 0)
-            # Use repeat logic for left/right toggle
-            def popup_lr(d):
-                gm.popup_sel = 1 - gm.popup_sel
-            _pad_axis_repeat(gm, "x", dx, now, popup_lr)
+            if dy == 0 and j.get_numaxes() > 1:
+                ay = j.get_axis(1)
+                dy = 1 if ay > AXIS_DEADZONE else (-1 if ay < -AXIS_DEADZONE else 0)
+
+            n_opts = 3 if getattr(gm, "popup_type", "launch") == "launch_menu" else 2
+            if n_opts == 3:
+                # 3-option vertical menu: up/down cycles selection. We also
+                # accept horizontal axis as up/down so a left/right d-pad still works.
+                use_dir = dy if dy != 0 else dx
+                def popup_ud(d):
+                    gm.popup_sel = (gm.popup_sel + d) % n_opts
+                _pad_axis_repeat(gm, "y", use_dir, now, popup_ud)
+            else:
+                # 2-option popup: left/right toggles between the two.
+                def popup_lr(d):
+                    gm.popup_sel = 1 - gm.popup_sel
+                _pad_axis_repeat(gm, "x", dx, now, popup_lr)
         return
     j = gm.joystick
     dx = dy = 0

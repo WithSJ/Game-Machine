@@ -30,6 +30,12 @@ The roadmap details the levels of development for Game Machine, tracking the com
 - [x] Configure startup launching via Windows Auto-Start Registry.
 - [x] Add lock, shutdown, restart, and exit options in the UI Settings/System menu.
 
+## ✅ Level 5 — Save-State Launcher (Completed)
+- [x] 3-option launch popup (Load Last Save State / Just Play / Cancel) when a save state exists.
+- [x] Per-emulator CLI flag injection (`--state=` / `-statefile` / `--savestate`).
+- [x] PARAM.SFO + SYSTEM.CNF parsing to identify games across PPSSPP / PCSX2 / RPCS3.
+- [x] Auto-skip to 2-option popup when no save state exists.
+
 ## 🔜 Future Concepts & WIP
 - [ ] UI sounds (select, confirm) and background music (BGM).
 - [ ] Text search filter for quick ROM indexing.

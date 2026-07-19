@@ -1,6 +1,7 @@
 """
 GAME MACHINE - ISO file parsing for cover art extraction.
 Parses PSP/PS3 ISO9660 filesystem to extract ICON0.PNG and PIC1.PNG.
+Also reads PARAM.SFO to identify game serials / disc IDs for save-state matching.
 """
 import re
 
@@ -109,3 +110,131 @@ def extract_iso_images(iso_path, game_dir_name):
     except Exception as e:
         print(f"[ISO Parser] Error reading {iso_path}: {e}")
         return None, None
+
+
+# ============================================================
+# PARAM.SFO parsing - lets us identify games by serial / disc ID
+# (used by core/savestates.py to find matching save-state files).
+# ============================================================
+def _read_iso_file(iso_path, dir_name, file_name):
+    """Read bytes of a single file from a directory in an ISO9660 image.
+
+    Returns the file contents or None if the file / directory / ISO is missing.
+    Mirrors the directory-walk logic of extract_iso_images but is parameterized
+    so we can pull any file (e.g. PARAM.SFO) out of any subdirectory.
+    """
+    try:
+        with open(iso_path, "rb") as f:
+            f.seek(16 * 2048)
+            pvd = f.read(2048)
+            if len(pvd) < 2048 or pvd[1:6] != b"CD001":
+                return None
+            root_rec = parse_dir_record(pvd, 156)
+            if not root_rec:
+                return None
+            root_records = read_directory(f, root_rec['lba'], root_rec['length'])
+            target_dir = None
+            for r in root_records:
+                name = r['name'].decode('utf-8', errors='ignore').split(';')[0].rstrip('.')
+                if name.upper() == dir_name.upper():
+                    target_dir = r
+                    break
+            if not target_dir:
+                return None
+            dir_records = read_directory(f, target_dir['lba'], target_dir['length'])
+            target_file = None
+            for r in dir_records:
+                name = r['name'].decode('utf-8', errors='ignore').split(';')[0].rstrip('.')
+                if name.upper() == file_name.upper():
+                    target_file = r
+                    break
+            if not target_file:
+                return None
+            f.seek(target_file['lba'] * 2048)
+            return f.read(target_file['length'])
+    except Exception as e:
+        print(f"[ISO Parser] Error reading {iso_path}/{dir_name}/{file_name}: {e}")
+        return None
+
+
+def parse_param_sfo(data):
+    """Parse a PARAM.SFO binary blob into a dict of {key: value}.
+
+    The SFO format (used by PSP and PS3 discs) is:
+      header (20 bytes): magic "\x00PSF" | version | key_table_offset |
+                         data_table_offset | index_entries
+      index table:      one 16-byte record per entry
+                        (key_offset:u16, data_fmt:u16, data_len:u32,
+                         data_max_len:u32, data_offset:u32)
+      key table:        null-terminated UTF-8 strings
+      data table:        values (UTF-8 strings for fmt 0x0404 / 0x0204,
+                        little-endian u32 for fmt 0x0402)
+
+    Only string and integer values are decoded; raw/unknown formats
+    are stored as bytes so callers can still inspect them if needed.
+    """
+    if not data or len(data) < 20:
+        return {}
+    if data[0:4] != b"\x00PSF":
+        return {}
+
+    key_table_offset = int.from_bytes(data[8:12], "little")
+    data_table_offset = int.from_bytes(data[12:16], "little")
+    index_entries = int.from_bytes(data[16:20], "little")
+
+    result = {}
+    for i in range(index_entries):
+        rec_off = 20 + i * 16
+        if rec_off + 16 > len(data):
+            break
+        key_offset = int.from_bytes(data[rec_off:rec_off + 2], "little")
+        data_fmt = int.from_bytes(data[rec_off + 2:rec_off + 4], "little")
+        data_len = int.from_bytes(data[rec_off + 4:rec_off + 8], "little")
+        data_offset = int.from_bytes(data[rec_off + 12:rec_off + 16], "little")
+
+        key_start = key_table_offset + key_offset
+        key_end = data.find(b"\x00", key_start)
+        if key_end == -1:
+            continue
+        key = data[key_start:key_end].decode("utf-8", errors="ignore")
+
+        val_start = data_table_offset + data_offset
+        val_end = val_start + data_len
+        if val_end > len(data):
+            continue
+        raw = data[val_start:val_end]
+
+        if data_fmt in (0x0404, 0x0204):
+            null_idx = raw.find(b"\x00")
+            if null_idx != -1:
+                raw = raw[:null_idx]
+            result[key] = raw.decode("utf-8", errors="ignore")
+        elif data_fmt == 0x0402:
+            if len(raw) >= 4:
+                result[key] = int.from_bytes(raw[:4], "little")
+            else:
+                result[key] = raw
+        else:
+            result[key] = raw
+
+    return result
+
+
+def get_psp_disc_id(iso_path):
+    """Return (DISC_ID, DISC_VERSION) from a PSP ISO's PARAM.SFO,
+    e.g. ("ULUS12345", "1.00"). Returns (None, None) if unavailable."""
+    sfo_data = _read_iso_file(iso_path, "PSP_GAME", "PARAM.SFO")
+    if not sfo_data:
+        return None, None
+    sfo = parse_param_sfo(sfo_data)
+    return sfo.get("DISC_ID"), sfo.get("DISC_VERSION")
+
+
+def get_ps3_title_id(iso_path):
+    """Return TITLE_ID (e.g. "BLUS30450") from a PS3 ISO's PARAM.SFO,
+    or None if unavailable."""
+    sfo_data = _read_iso_file(iso_path, "PS3_GAME", "PARAM.SFO")
+    if not sfo_data:
+        return None
+    sfo = parse_param_sfo(sfo_data)
+    return sfo.get("TITLE_ID")

@@ -62,9 +62,57 @@ def _ppsspp_menu_monitor(proc):
         time.sleep(0.5)
 
 
-def launch_game(game, consoles):
+def _build_command(cfg, game, load_state=None):
+    """Build the emulator launch command for a game.
+
+    When load_state is None, the emulator boots the game normally.
+    When load_state is an absolute path to a save-state file, the
+    emulator loads that state right after booting.
+
+    Per-emulator save-state flags (verified against each emulator's source):
+
+      PPSSPP  ->  --state=<path>    (game ISO still passed; state loads after boot)
+      PCSX2   ->  -statefile <path> (game ISO still passed; state loads after boot)
+      RPCS3   ->  --savestate <path> (NO game ISO; savestate embeds everything)
+
+    Returns the argv list to Popen, or None if a save state was requested
+    but the file no longer exists (caller should fall back to Just Play).
+    """
+    base_args = list(cfg["args"])
+
+    if load_state is not None:
+        if not os.path.isfile(load_state):
+            return None
+        console = game["console"]
+        if console == "PSP":
+            # PPSSPP: --state=<path> (double-dash with =), then the game ISO
+            base_args.append(f"--state={load_state}")
+            base_args.append(game["path"])
+        elif console == "PS2":
+            # PCSX2: -statefile <path> (single-dash with space), then the game ISO
+            base_args.append("-statefile")
+            base_args.append(load_state)
+            base_args.append(game["path"])
+        elif console == "PS3":
+            # RPCS3: --savestate <path> ONLY (no game ISO). --fullscreen
+            # requires --no-gui, which we already pass by default.
+            base_args = ["--no-gui", "--fullscreen", "--savestate", load_state]
+        else:
+            # Unknown console - can't apply a save state; boot normally.
+            base_args.append(game["path"])
+    else:
+        base_args.append(game["path"])
+
+    return [cfg["emulator"]] + base_args
+
+
+def launch_game(game, consoles, load_state=None):
     cfg = consoles[game["console"]]
-    command = [cfg["emulator"]] + cfg["args"] + [game["path"]]
+    command = _build_command(cfg, game, load_state)
+    if command is None:
+        # Requested save state vanished between popup and launch - fall back
+        # to a normal boot so the user still gets to play.
+        command = [cfg["emulator"]] + list(cfg["args"]) + [game["path"]]
     start = time.time()
     # cwd = the emulator's own folder so portable mode works correctly
     proc = subprocess.Popen(

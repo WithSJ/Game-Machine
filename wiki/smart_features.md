@@ -34,6 +34,22 @@ When returning from a game session, the event queue is cleared to prevent accide
 
 Only files matching configuration extensions (e.g. `.iso`, `.cso`, `.chd`) are ingested, filtering out webp, png, and temporary files that may reside in the directories.
 
+## 6. Save-State Launcher Popup
+
+When the user activates a game card, Game Machine looks for an existing save state for that game in the emulator's save-state folder. If one is found, the launch popup expands into a 3-option vertical menu:
+
+- **LOAD LAST SAVE STATE** (accent color, default selection) — boots the game and resumes the newest save state
+- **JUST PLAY** — boots the game from cold boot
+- **CANCEL** — dismisses the popup
+
+If no save state exists, the popup auto-collapses to the 2-option Just Play / Cancel form (no dead button). Encrypted PS3 games still get the existing DECRYPT GAME? prompt on first launch.
+
+### How It Works
+- `core/savestates.py::find_latest_save_state(game, consoles)` parses the game's `PARAM.SFO` (PSP/PS3) or `SYSTEM.CNF` (PS2) to identify the game's serial, then globs the emulator's save-state directory for matching files and returns the newest by mtime.
+- `core/launcher.py::_build_command(cfg, game, load_state)` injects the per-emulator CLI flag (`--state=` for PPSSPP, `-statefile` for PCSX2, `--savestate` for RPCS3) when a save state is requested. See [Emulator Setup](file:///c:/Users/jadam/Desktop/Game-Machine/wiki/emulator_setup.md) for the full flag reference.
+- The popup UI is rendered in `ui/draw_popup.py` and supports keyboard (arrows / Enter / Esc), gamepad (d-pad / A / B), mouse, and touch input.
+
 ## Related Pages
 - [Architecture](file:///c:/Users/jadam/Desktop/Game-Machine/wiki/architecture.md)
+- [Emulator Setup](file:///c:/Users/jadam/Desktop/Game-Machine/wiki/emulator_setup.md)
 - [Resolved Bugs](file:///c:/Users/jadam/Desktop/Game-Machine/wiki/resolved_bugs.md)
