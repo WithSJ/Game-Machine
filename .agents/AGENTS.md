@@ -13,6 +13,40 @@ We maintain a persistent, compounding knowledge base under `wiki/` powered by ra
    - Log all operations chronologically in [log.md](file:///c:/Users/jadam/Desktop/Game-Machine/wiki/log.md) (latest entries on top).
    - Keep the [index.md](file:///c:/Users/jadam/Desktop/Game-Machine/wiki/index.md) fully up-to-date.
 
+## Mandatory Testing Before Git Commit & Push (Applies to EVERY change)
+
+**Testing is mandatory and comes BEFORE any `git add`, `git commit`, or `git push`. No exceptions. A change is not "done" until it has been tested and the user has confirmed the test result.**
+
+### The rule
+
+1. **Test before staging.** After you finish writing/editing code, you MUST run a verification step BEFORE running `git add`. The verification must actually exercise the code you changed — not just `py_compile`. Examples by change type:
+   - **Python source change** (`*.py`): at minimum `python -m py_compile <changed_files>`. For UI/draw code, also run an offscreen render test that calls the modified `draw_*` function. For launcher/core logic, run a smoke test that imports the module and calls the changed function with synthetic input.
+   - **UI / visual change** (anything under `ui/`): run the offscreen boot test that exercises every `draw_*` path (main screen, launch popup, exit menu, settings panel, setup screen, setup help modal). Verify no `NameError`, no crash, and that the expected pixels render with the correct theme tokens.
+   - **Wiki / docs / config change** (`wiki/*.md`, `.agents/*`, `*.json`): verify the file parses (for Markdown, check headers and links; for JSON, run `python -c "import json; json.load(open(...))"`; for YAML frontmatter in skill files, sanity-check the `name:` and `description:` fields).
+   - If you don't know what test to run, ASK the user before proceeding.
+
+2. **Report the test result to the user.** Show what you ran, what passed, and what (if anything) failed. If anything failed, fix it and re-test before going further. Do NOT move to step 3 until every test passes.
+
+3. **Ask the user for testing confirmation BEFORE `git add` / `git commit` / `git push`.** Use the `question` tool (or an explicit inline question) and wait for their answer. Suggested phrasing:
+   > I've completed the changes and ran these tests: <list>. All passed. Would you like me to test anything else before I commit and push, or proceed with `git commit` + `git push`?
+   
+   Options to offer: "Proceed with commit + push" / "Run more tests first" / "Hold off — I want to test myself".
+   
+   - If the user asks for more tests, run them and re-ask.
+   - If the user wants to test themselves, STOP and wait. Do not commit until they explicitly say to proceed.
+   - If the user says proceed, go to step 4.
+
+4. **Only after the user confirms, run the normal commit + push workflow** (see "Mandatory Change Workflow" below — start at step 2 "Stage the changes").
+
+### Hard rules
+
+- **MUST** run at least one real test before asking the user. Asking the user without having tested first is a violation.
+- **MUST NOT** run `git add`, `git commit`, or `git push` until the user has explicitly confirmed.
+- **MUST NOT** skip the ask step even for "tiny" or "obvious" changes — the ask is the user's safety net.
+- **MUST** report test results truthfully. Never claim a test passed if it failed or wasn't run.
+- **MUST** re-test after any post-test edit. If the user asks for a follow-up change, the testing rule restarts from step 1.
+- If a test fails, fix the root cause and re-test. Never paper over a failure to get to the commit step.
+
 ## Mandatory Change Workflow (Applies to EVERY modification)
 
 **Every time you modify, add, or delete ANY file in the repository - whether code, config, wiki, or docs - you MUST complete ALL of the following steps in order, without exception and without being asked twice:**
@@ -23,14 +57,16 @@ We maintain a persistent, compounding knowledge base under `wiki/` powered by ra
    - If the change affects architecture, file structure, smart features, resolved bugs, emulator setup, or the roadmap, also update the corresponding page under `wiki/` and `wiki/index.md`.
    - Consult the [wiki-maintainer](file:///c:/Users/jadam/Desktop/Game-Machine/.agents/skills/wiki-maintainer/SKILL.md) skill for ingestion/linting workflows when unsure.
 
-2. **Stage the changes**
+2. **Test the change** — follow the "Mandatory Testing Before Git Commit & Push" section above. **Do not proceed to step 3 until the user has confirmed the test result.**
+
+3. **Stage the changes**
    - `git add <files>` - stage every file you touched, including the wiki updates. Never stage files you did not intend to change. Never stage `playtime.json` or anything under `covers/` (both are gitignored for portability/privacy).
 
-3. **Commit with a proper message**
+4. **Commit with a proper message**
    - Subject line: concise, lowercase prefix matching the log `<type>` (`bugfix:`, `feature:`, `refactor:`, `config:`, `doc:`, `ingest:`, `system:`) followed by a short summary. Keep the subject under ~72 characters.
    - Body: a descriptive paragraph or bullet list explaining what changed, why, and any notable side effects. Reference specific files and line regions when helpful.
 
-4. **Push to remote**
+5. **Push to remote**
    - `git push origin main` (or the current branch). Confirm the push succeeds before reporting the task as done.
 
 **Rules of thumb**

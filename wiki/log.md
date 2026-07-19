@@ -2,6 +2,25 @@
 
 This file is a chronological log of operations performed on the Wiki (latest logs on top).
 
+## [2026-07-19] system | Add mandatory testing rule before git commit + push
+Added a new top-level section "Mandatory Testing Before Git Commit & Push (Applies to EVERY change)" to `.agents/AGENTS.md` and wove it into the existing "Mandatory Change Workflow" as a new step 2 (between wiki update and `git add`).
+
+### The rule (4 steps)
+1. **Test before staging** — run a real verification step that exercises the changed code (not just `py_compile` for Python; offscreen render test for UI; JSON/Markdown parse check for wiki/config). If you don't know what test to run, ASK the user.
+2. **Report test results to the user** — show what was run, what passed, what failed. Fix failures before going further.
+3. **Ask the user for testing confirmation BEFORE `git add` / `git commit` / `git push`** — use the `question` tool and wait. Options: "Proceed with commit + push" / "Run more tests first" / "Hold off — I want to test myself". Do NOT commit until the user explicitly says to proceed.
+4. **Only after the user confirms, run the normal commit + push workflow.**
+
+### Hard rules added
+- MUST run at least one real test before asking the user.
+- MUST NOT run `git add` / `git commit` / `git push` until the user has explicitly confirmed.
+- MUST NOT skip the ask step even for tiny/obvious changes.
+- MUST report test results truthfully — never claim a test passed if it failed or wasn't run.
+- MUST re-test after any post-test edit; the testing rule restarts from step 1.
+
+### Updated "Mandatory Change Workflow"
+The existing 4-step workflow is now 5 steps: (1) update wiki → (2) test and ask user for confirmation → (3) stage → (4) commit → (5) push. The new step 2 references the testing section.
+
 ## [2026-07-19] refactor | Tokenize all raw RGB tuples in ui/*.py to enforce the design philosophy
 Audited every button and draw call across all 13 files in `ui/` against the UI Design Philosophy §2.4 ("MUST NOT introduce raw RGB tuples in draw code"). Found 30+ violations where colors were hardcoded instead of sourced from `ui/theme.py` tokens. All fixed.
 
