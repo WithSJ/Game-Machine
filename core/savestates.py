@@ -111,8 +111,10 @@ def find_latest_save_state(game, consoles):
         for d in _pcsx2_state_dirs(cfg):
             if os.path.isdir(d):
                 # PCSX2 filename pattern: "<serial> (<CRC>).<NN>.p2s"
-                # The "(" comes right after "<serial> " and is unique enough
-                # that this glob will only match this game's state files.
+                # and "<serial> (<CRC>).resume.p2s". The serial is the
+                # hyphenated form (e.g. "SLUS-21134"); the "(" right after
+                # the serial space is unique enough to scope this game's
+                # state files.
                 results.extend(glob.glob(os.path.join(d, f"{serial} (*.p2s")))
                 results.extend(glob.glob(os.path.join(d, f"{serial} (*.p2s.backup")))
         return _newest(results)

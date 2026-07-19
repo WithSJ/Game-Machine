@@ -2,6 +2,33 @@
 
 This file is a chronological log of operations performed on the Wiki (latest logs on top).
 
+## [2026-07-20] bugfix | Fix PS2 serial/save-state, name cleaner, recents hardening
+Audited the full codebase and fixed 6 real behavioral bugs found by reading every module:
+
+### PS2 serial + save-state (covers/ps2_serial.py, core/savestates.py)
+- `get_ps2_serial()` only matched the dotted BOOT2 form `SLUS_211.34` and returned
+  `SLUS-21134`. PCSX2 actually names save states `SLUS-21134 (CRC).00.p2s` and cover
+  repos use the 5-digit hyphenated serial. Rewrote the regex to normalize both
+  `XXXX_NNN.NN` (SYSTEM.CNF) and `XXXX-NNNNN` (state/cover) forms to `SLUS-21134`.
+- `find_latest_save_state()` PS2 glob now matches the real hyphenated serial, so the
+  "Load Last Save State" launch menu actually appears for PS2 games.
+
+### Name cleaner nested brackets (core/scanner.py)
+- `clean_name()` used a non-nested bracket regex in a loop that left dangling text for
+  names like `Super Game (Region (Extra (Deep)))`. Now strips innermost `(...)`/`[...]`
+  pairs each pass, fully removing nested tags while keeping the real title.
+
+### Recents hardening (app.py `_recents`)
+- Sort key assumed every playdata value was a dict with a numeric `last`; a corrupt or
+  non-dict entry would crash the sort. Now guards with `isinstance` checks and defaults
+  to 0, so RECENTS can never raise on bad `playtime.json` data.
+
+### Verification
+- `python -m py_compile` passes on all 30 source files.
+- Logic smoke tests confirm: nested-bracket names clean correctly, PS2 serial normalizes
+  to the hyphenated 5-digit form across all observed variants, and the save-state glob
+  pattern matches the real PCSX2 filename layout.
+
 ## [2026-07-19] system | Add mandatory testing rule before git commit + push
 Added a new top-level section "Mandatory Testing Before Git Commit & Push (Applies to EVERY change)" to `.agents/AGENTS.md` and wove it into the existing "Mandatory Change Workflow" as a new step 2 (between wiki update and `git add`).
 

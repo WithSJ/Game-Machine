@@ -268,8 +268,14 @@ class GameMachine:
 
     # ---------------- data helpers ----------------
     def _recents(self):
-        played = [g for g in self.games if self.playdata.get(g["path"], {}).get("last")]
-        played.sort(key=lambda g: -self.playdata[g["path"]]["last"])
+        def _last(g):
+            rec = self.playdata.get(g["path"])
+            if isinstance(rec, dict):
+                val = rec.get("last")
+                return val if isinstance(val, (int, float)) else 0
+            return 0
+        played = [g for g in self.games if _last(g)]
+        played.sort(key=lambda g: -_last(g))
         return played[:16]
 
     def current_list(self):

@@ -13,13 +13,20 @@ from core.config import BASE, DEFAULT_EXTENSIONS
 def clean_name(filename):
     name = os.path.splitext(filename)[0]
     name = re.sub(r"^\d+\s*-\s*", "", name)              # strip "0517 - " prefix
-    # Strip bracketed/parenthesized tags. Apply repeatedly so nested
-    # tags like "Game (USA (En,Fr,De))" are fully removed instead of
-    # leaving a trailing ")" when the innermost pair is stripped first.
+    # Strip bracketed/parenthesized tags, including nested ones. A single
+    # non-nested pattern can't handle "Game (USA (En,Fr,De))" because the
+    # innermost ")" closes before the outer group is seen, leaving a dangling
+    # "(USA " behind. We therefore strip the innermost pair each pass and
+    # repeat until the name stops changing. The pattern allows nested
+    # brackets inside the content so a whole "(USA (En,Fr,De))" group is
+    # consumed in one go once its inner pairs are gone.
     bracket_re = re.compile(r"\s*[\(\[][^\(\)\[\]]*[\)\]]")
     prev = None
     while prev != name:
         prev = name
+        # First peel any fully-inner pairs, then the outer wrapper.
+        name = re.sub(r"\(([^\(\)]*)\)", "", name)
+        name = re.sub(r"\[([^\[\]]*)\]", "", name)
         name = bracket_re.sub("", name)
     name = name.replace("_", " ")                         # underscores -> spaces
     name = re.sub(r" {2,}", " ", name)                    # collapse multiple spaces

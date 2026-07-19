@@ -47,10 +47,24 @@ def get_ps2_serial(iso_path):
                 
             if match:
                 raw_filename = match.group(1).strip()
-                clean_match = re.search(r'([A-Z]{4})_(\d{3})\.(\d{2})', raw_filename.upper())
+                # PCSX2 stores save states under the hyphenated serial form
+                # (e.g. "SLUS-21134 (CRC).00.p2s"), while the BOOT2 line in
+                # SYSTEM.CNF uses an underscore + dotted number ("SLUS_211.34").
+                # Normalize the dotted form to the hyphenated one so the serial
+                # matches the actual state-file / cover-art names.
+                # PCSX2 serials appear in two forms:
+                #   * file/state form:  "SLUS-21134"  (4 letters, '-', 5 digits)
+                #   * SYSTEM.CNF BOOT2: "SLUS_211.34" (4 letters, '_', 3 digits, '.', 2 digits)
+                # Normalize both to the hyphenated "SLUS-21134" used by save
+                # states and cover-art repositories.
+                clean_match = re.search(r'([A-Z]{4})[_\.\-](\d{3})[_\.\-](\d{2})', raw_filename.upper())
                 if clean_match:
                     prefix, num1, num2 = clean_match.groups()
                     return f"{prefix}-{num1}{num2}"
+                clean_match = re.search(r'([A-Z]{4})[_\.\-](\d{5})', raw_filename.upper())
+                if clean_match:
+                    prefix, digits = clean_match.groups()
+                    return f"{prefix}-{digits}"
                 else:
                     return raw_filename.replace('_', '-').replace('.', '')
     except Exception as e:
