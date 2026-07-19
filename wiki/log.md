@@ -2,6 +2,79 @@
 
 This file is a chronological log of operations performed on the Wiki (latest logs on top).
 
+## [2026-07-19] doc | Establish UI Design Philosophy as a mandatory skill
+Created a single source of truth for Game Machine's visual design and made it a loadable opencode skill + a wiki page + a mandatory workflow rule in `AGENTS.md`. The launch-game 3-option popup (`ui/draw_popup.py::_draw_launch_menu_body`) is the canonical reference implementation.
+
+### New skill: `.agents/skills/ui-design-philosophy/SKILL.md`
+- Auto-discoverable opencode skill (`name: ui-design-philosophy`) that enforces the design workflow before any UI file is touched.
+- Lists when to load it (any UI/draw change), the 10-step workflow, hard rules, and a copy-from table of canonical reference implementations.
+- Loaded via the same mechanism as the existing `wiki-maintainer` skill.
+
+### New wiki page: `wiki/ui_design_philosophy.md`
+A prescriptive, 14-section design system covering:
+- §1 Visual language — "premium console dashboard" feel, dark + per-console accent.
+- §2 Color palette — every token in `ui/theme.py` (neutrals, accent colors per console, functional colors) with rules: no raw RGB tuples, use `mix()`, one accent per console.
+- §3 Typography — three families (Bahnschrift heavy / Verdana body / Consolas mono) and the full 15-token type scale from `app.py::__init__`. No new sizes without a token.
+- §4 Button taxonomy — exactly three archetypes, no others:
+  - **A — Parallelogram Action Button**: primary actions (hero PLAY, popup choices, setup menu). Filled accent when selected, `COL_PANEL2` + `COL_CARD_BORDER` outline when not. `cut=8–10`. Dark text on accent fill.
+  - **B — Rounded Rect Chip Button**: secondary / header / tab. `border_radius=3–8`. Focused = 2px accent border, unfocused = 1px `COL_CARD_BORDER`.
+  - **C — List Option Row**: settings & exit menu rows. `border_radius=8`. Selected = `mix(COL_BG, accent, 0.25)` fill + 2px accent border + 3px left accent bar.
+- §5 Popup anatomy — overlay alpha 160, `COL_PANEL` + `border_radius=14`, 3px accent top glow, 1px `mix(COL_BG, accent, 0.4)` border, `ease_out` scale-in over 200–220ms, centered `f_popup_title` 24px from top, `f_mono` hint 22px from bottom. Includes an ASCII diagram of the launch popup.
+- §6 Console chip pattern, §7 Hint/footer pattern, §8 Iconography (geometric primitives only, no unicode glyphs), §9 Spacing & layout, §10 Animation principles (`ease_out`, never linear for organic motion), §11 Input binding conventions (all four modalities wired), §12 MUST / MUST NOT quick reference, §13 Reference implementations table, §14 New-screen checklist.
+
+### Updated: `.agents/AGENTS.md`
+- Added a new top-level section "Mandatory UI Design Workflow (Applies to ANY UI / visual change)" with 10 enforceable steps that must run before any `ui/` change is committed.
+- Updated "Related Resources" to link the new skill and wiki page alongside the existing wiki-maintainer skill.
+
+### Updated: `wiki/index.md`
+- Added the new "UI Design Philosophy" entry under "Guides & Instructions" so future agents discover it when consulting the wiki.
+- Bumped "Last updated" date to 2026-07-19.
+
+## [2026-07-19] feature | Save-State Launcher popup (3-option) + per-emulator CLI save-state loading
+Added a "Load Last Save State" option to the launch-game popup. When the user activates a game card, Game Machine now scans the emulator's save-state directory for the newest save state matching that game and, if found, shows a 3-option vertical popup (LOAD LAST SAVE STATE / JUST PLAY / CANCEL); otherwise it falls back to the 2-option YES/NO popup. Encrypted PS3 games still get the existing DECRYPT GAME? prompt first.
+
+### New file: `core/savestates.py`
+- `find_latest_save_state(game, consoles)` globs each emulator's save-state directory and returns the newest match by mtime, or `None`.
+- PSP: scans `<PPSSPP_win>/memstick/PSP/PPSSPP_STATE/` for `<DISC_ID>_<DISC_VER>_<slot>.ppst` (falls back to `~/Documents/PPSSPP/...`).
+- PS2: scans `<PCSX2_win>/sstates/` for `<serial> (*.p2s` (falls back to `~/Documents/PCSX2/...`).
+- PS3: scans `<RPCS3_win>/savestates/<TitleID>/*.SAVESTAT` (+ `.zst` / `.gz` variants) (also tries `portable/` and `%RPCS3_CONFIG_DIR%`).
+
+### Extended: `covers/iso_parser.py`
+- New `_read_iso_file(iso_path, dir_name, file_name)` walks an ISO9660 directory chain to read any file (PARAM.SFO, SYSTEM.CNF, etc.) — used by the save-state identifier and reuses `parse_dir_record` / `read_directory`.
+- New `parse_param_sfo(data)` decodes the PSP/PS3 PARAM.SFO binary format (header + index table + key table + data table) into a `{key: value}` dict, handling string (`0x0404`/`0x0204`) and integer (`0x0402`) data formats.
+- New `get_psp_disc_id(iso_path)` returns `(DISC_ID, DISC_VERSION)` from `PSP_GAME/PARAM.SFO`.
+- New `get_ps3_title_id(iso_path)` returns `TITLE_ID` from `PS3_GAME/PARAM.SFO`.
+
+### Extended: `core/launcher.py`
+- New `_build_command(cfg, game, load_state=None)` builds the emulator launch argv. When `load_state` is given, it injects the per-emulator flag and verifies `os.path.isfile()` first — returns `None` if the file vanished (caller falls back to Just Play):
+  - PSP: `--fullscreen --state=<path> <game.iso>` (PPSSPP `--state=` is undocumented but parsed in `UI/NativeApp.cpp:641`).
+  - PS2: `-fullscreen -batch -statefile <path> <game.iso>` (PCSX2's documented flag).
+  - PS3: `--no-gui --fullscreen --savestate <path>` (NO game ISO — the savestate embeds everything; `--fullscreen` requires `--no-gui` per RPCS3 source).
+- `launch_game()` now takes `load_state=None` and uses `_build_command`; falls back to a normal boot if the state file disappeared between popup and launch.
+
+### Rewritten: `ui/draw_popup.py`
+- New `popup_type = "launch_menu"` draws a vertical 3-option menu with parallelogram buttons (archetype A) — LOAD LAST SAVE STATE (accent), JUST PLAY (near-white), CANCEL (red `(200, 70, 80)`).
+- LOAD STATE row is taller (60px vs 50px) to fit a second line showing the truncated save-state filename (`_short_state_name` truncates to 28 chars) without overlapping the label.
+- New `_draw_popup_icon()` helper draws three geometric icons via `pygame.gfxdraw` primitives (no unicode glyphs): `play` (filled triangle), `resume` (vertical bar + triangle), `cancel` (X mark from two crossed 2px lines).
+- Existing 2-option `launch` and `decrypt` popup bodies preserved (extracted into `_draw_launch_body` and `_draw_decrypt_body` for clarity).
+- Popup dimensions: `launch_menu` = 520×380, `decrypt` = 460×240, `launch` = 460×220.
+
+### Extended: `app.py`
+- Imported `find_latest_save_state` from `core/savestates`.
+- New state on `GameMachine`: `popup_save_state` (path), `popup_option_rects` (list of `(idx, action, rect)`).
+- `launch_selected()` now calls `find_latest_save_state()` and selects `popup_type`: `"decrypt"` for first-time encrypted PS3 games, `"launch_menu"` if a save state exists, else `"launch"`.
+- New `_popup_activate()` dispatcher: in `launch_menu` it picks LOAD STATE / JUST PLAY / CANCEL; in 2-option popups it preserves the old YES/NO behavior.
+- `_confirm_launch(load_state=None)` now accepts an optional save-state path and toasts "loaded save state" when used.
+- Rewrote popup input handlers (keyboard / gamepad / mouse / touch) to cycle through 3 options when `popup_type == "launch_menu"` and to hit-test the 3 rects stored on `gm.popup_option_rects`. Fixed a bug where `K_RIGHT` was being checked as `K_DOWN` inside the `K_LEFT/K_RIGHT` branch.
+
+### Extended: `input/gamepad.py`
+- Popup axis-repeat now uses up/down navigation for the 3-option `launch_menu` and keeps the old left/right toggle for the 2-option popups.
+
+### Updated wiki pages
+- `wiki/emulator_setup.md`: new "Save-State Launch Commands" section with the per-emulator flag table, file location table, and gotchas (RPCS3 `--fullscreen` requires `--no-gui`, PPSSPP `--state=` is undocumented, save-state version drift handling).
+- `wiki/smart_features.md`: new §6 "Save-State Launcher Popup" documenting the user-visible behavior and the call flow.
+- `wiki/roadmap.md`: new "Level 5 — Save-State Launcher" milestone marked completed.
+
 ## [2026-07-18] config | Bump version to v1.1.0 for release
 - Updated the version string from `v4` to `v1.1.0` in `ui/draw_header.py` and `ui/draw_settings.py` to match the release version.
 - Created and pushed Git tag `v1.1.0` to the remote repository.

@@ -17,9 +17,10 @@ Welcome to the **Game Machine Wiki** — a persistent, compounding knowledge bas
 
 ### 🛠️ Guides & Instructions
 - [Emulator Setup](file:///c:/Users/jadam/Desktop/Game-Machine/wiki/emulator_setup.md) - Command reference, emulator flags, folder paths, and configuration troubleshooting.
+- [UI Design Philosophy](file:///c:/Users/jadam/Desktop/Game-Machine/wiki/ui_design_philosophy.md) - The single source of truth for colors, typography, button archetypes, popups, icons, and animations. MUST be consulted before any UI change.
 
 ### 📈 Planning
 - [Roadmap](file:///c:/Users/jadam/Desktop/Game-Machine/wiki/roadmap.md) - Outlines completed versions, in-progress upgrades, and future feature planning.
 
 ---
-*Last updated: 2026-07-18*
+*Last updated: 2026-07-19*
