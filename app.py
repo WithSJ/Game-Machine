@@ -435,12 +435,28 @@ class GameMachine:
         rec["seconds"] += elapsed
         rec["last"] = int(time.time())
         save_playdata(self.playdata)
-        self.pad_state = {"x": {"dir": 0, "next": 0}, "y": {"dir": 0, "next": 0}}
+        self._reinit_joystick()
         if load_state:
             self.pop(f"Welcome back \u00b7 {fmt_dur(elapsed)} session (loaded save state)")
         else:
             self.pop(f"Welcome back \u00b7 {fmt_dur(elapsed)} session")
         self.ignore_input_until = pygame.time.get_ticks() + 1000
+
+    def _reinit_joystick(self):
+        """Re-acquire the gamepad after an emulator exits.
+
+        Emulators grab exclusive HID ownership of the controller during
+        fullscreen. When they release it on exit, Pygame's cached joystick
+        object goes stale and stops reporting input, so we rebuild it here.
+        """
+        pygame.joystick.quit()
+        pygame.joystick.init()
+        if pygame.joystick.get_count() > 0:
+            self.joystick = pygame.joystick.Joystick(0)
+            self.joystick.init()
+        else:
+            self.joystick = None
+        self.pad_state = {"x": {"dir": 0, "next": 0}, "y": {"dir": 0, "next": 0}}
 
     def _cancel_popup(self):
         self.popup_active = False
