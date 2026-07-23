@@ -29,8 +29,19 @@ def handle_gamepad_buttons(gm, event):
 
 def handle_gamepad_connect(gm, event):
     """Handle controller plug-in after launch."""
-    gm.joystick = pygame.joystick.Joystick(event.device_index)
-    gm.joystick.init()
+    try:
+        gm.joystick = pygame.joystick.Joystick(event.device_index)
+        gm.joystick.init()
+    except KeyError:
+        # pygame bug: event.device_index can be invalid (e.g., 2 when only 0,1 exist)
+        # Re-init the joystick subsystem to recover
+        pygame.joystick.quit()
+        pygame.joystick.init()
+        if pygame.joystick.get_count() > 0:
+            gm.joystick = pygame.joystick.Joystick(0)
+            gm.joystick.init()
+        else:
+            gm.joystick = None
 
 
 def handle_gamepad_disconnect(gm, event):

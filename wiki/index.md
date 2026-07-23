@@ -23,4 +23,4 @@ Welcome to the **Game Machine Wiki** — a persistent, compounding knowledge bas
 - [Roadmap](file:///c:/Users/jadam/Desktop/Game-Machine/wiki/roadmap.md) - Outlines completed versions, in-progress upgrades, and future feature planning.
 
 ---
-*Last updated: 2026-07-19*
+*Last updated: 2026-07-23*

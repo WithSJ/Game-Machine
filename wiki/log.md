@@ -2,6 +2,66 @@
 
 This file is a chronological log of operations performed on the Wiki (latest logs on top).
 
+## [2026-07-23] bugfix | pygame KeyError: 2 (JOYDEVICEADDED invalid device_index) — crash on gamepad reconnect
+
+Fixed a crash (`KeyError: 2` → `SystemError: <built-in function get> returned a result with an exception set`) that occurred when:
+- A gamepad is hot-plugged/unplugged on Windows
+- An emulator (PPSSPP/PCSX2/RPCS3) releases exclusive HID ownership on exit, causing Windows to re-enumerate the device with an index Pygame hasn't registered yet
+
+**Root Cause:** Both `input/gamepad.py::handle_gamepad_connect()` (triggered by `JOYDEVICEADDED`) and `app.py::_reinit_joystick()` (called post-emulator) blindly called `pygame.joystick.Joystick(event.device_index)` assuming the index was valid. When the index was stale (e.g., `2` when only `0,1` exist), Pygame raised `KeyError` internally, which propagated as `SystemError` from `pygame.event.get()`.
+
+**Fix:** Wrapped both `Joystick()` calls in `try/except KeyError` with graceful recovery:
+- `input/gamepad.py:30-35` — On error: `pygame.joystick.quit()`, `pygame.joystick.init()`, re-query count, init first available or set `gm.joystick = None`
+- `app.py:454-463` — Same recovery pattern in `_reinit_joystick()`, plus reset `self.pad_state` to clear stale axis repeat state
+
+**Files Modified:**
+- `input/gamepad.py` — `handle_gamepad_connect()`: try/except with subsystem recovery
+- `app.py` — `_reinit_joystick()`: try/except with subsystem recovery + `pad_state` reset
+
+**Verification:**
+- `python -m py_compile app.py input/gamepad.py` — clean
+- Mocked `JOYDEVICEADDED` with invalid `device_index=2` → handler recovers, no crash
+
+**Wiki Updates:**
+- Added "Bug: pygame KeyError: 2 (JOYDEVICEADDED invalid device_index)" section to `wiki/resolved_bugs.md`
+- Added log entry here
+
+## [2026-07-23] feature | Two-Step Emulator Update/Download Prompts + Correct Path Detection
+
+Overhauled the first-run Setup Wizard to correctly detect existing emulators in the user's chosen folder and present a two-step confirmation flow for updates/downloads.
+
+### Core Fix: Path Detection (`core/emulator_version.py`, `ui/draw_setup.py`)
+- Added optional `emulators_dir` parameter to `get_installed_emulator_version()`, `scan_existing_emulators()`, and `check_emulator_updates()`. Previously these functions used the module-level config which pointed to the default `D:\Game Machine\emulators\` — causing **all emulators to appear "not installed"** even when present in the user's chosen folder. Now the setup thread passes `os.path.join(root_folder, "emulators")` so detection works immediately.
+- `_setup_emulators_folder()` now calls `save_playdata()` + `refresh_paths()` so the config module knows the correct path before scanning runs.
+
+### New Two-Step Prompt Flow (`ui/draw_setup.py`, `app.py`)
+For **installed** emulators:
+1. *"X v1.20 is already installed. Check for a newer version?"* (Yes/No)
+2. If Yes + update found → *"Update v1.20 → v1.21 available. Update now?"* (Yes/No)
+3. If Yes + no update → logs "already up to date", no download
+4. If No → keeps current, no download
+
+For **not-installed** emulators:
+- *"X is not installed. Download and install now?"* (Yes/No) — unchanged
+
+### Skip-All Behavior
+If the user declines all prompts, setup completes successfully; dashboard launches with existing emulators (paths saved in `_finalize()`).
+
+### Prompt Input Fix (`app.py`)
+- Reordered `handle_setup_event()`: `awaiting_user_input` check now runs **before** `active` check so YES/NO keys (Y/Enter/A / N/Esc/B) are processed while the thread waits.
+- Updated `draw()`: `awaiting_user_input` branch calls `draw_update_prompt()` instead of showing the frozen progress screen.
+
+### Files Modified
+- `core/emulator_version.py` — optional `emulators_dir` param for all scan functions
+- `ui/draw_setup.py` — reordered `_run` steps, passed correct dir, new `check_update` prompt type, updated step labels
+- `app.py` — prioritized `awaiting_user_input` in event handler, added prompt branch in `draw()`
+- `core/config.py` / `core/playdata.py` — (pre-existing) `get_playdata_file()`, `refresh_paths()`, `github_repo` fields for update checks
+
+### Verification
+- `python -m py_compile` clean on all modules
+- Mock test: passing correct `emulators_dir` detects installed emulators; wrong default path reports "not installed"
+- Mock test: skip-all flow completes, decisions recorded correctly, `_download_emulator` skips all
+
 ## [2026-07-20] bugfix | Fix PS2 serial/save-state, name cleaner, recents hardening
 Audited the full codebase and fixed 6 real behavioral bugs found by reading every module:
 

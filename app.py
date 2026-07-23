@@ -451,10 +451,14 @@ class GameMachine:
         """
         pygame.joystick.quit()
         pygame.joystick.init()
-        if pygame.joystick.get_count() > 0:
-            self.joystick = pygame.joystick.Joystick(0)
-            self.joystick.init()
-        else:
+        try:
+            if pygame.joystick.get_count() > 0:
+                self.joystick = pygame.joystick.Joystick(0)
+                self.joystick.init()
+            else:
+                self.joystick = None
+        except KeyError:
+            # pygame bug: internal joystick mapping corrupted
             self.joystick = None
         self.pad_state = {"x": {"dir": 0, "next": 0}, "y": {"dir": 0, "next": 0}}
 

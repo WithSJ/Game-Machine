@@ -2,7 +2,32 @@
 
 *Source: [Game-Machine-Documentation.md](file:///c:/Users/jadam/Desktop/Game-Machine/sources/Game-Machine-Documentation.md)*
 
-Each console emulator is launched programmatically via Pygame using `subprocess.run()`. Crucial flags are passed to make the transitions seamless and headless.
+## First-Run Setup Wizard Flow
+
+When Game Machine starts without a configured library folder, it launches an automatic Setup Wizard (`ui/draw_setup.py`). The flow is:
+
+1. **Folder Selection** — Native directory picker; choose a root folder (e.g., `D:\Game Machine`). Creates:
+   - `emulators/` — portable emulator installs (`PPSSPP_win/`, `PCSX2_win/`, `RPCS3_win/`)
+   - `PSP_iso/`, `PS2_iso/`, `PS3_iso/` — ROM folders per console
+   - `covers/` — cover art cache
+
+2. **Emulator Folder Config** — Sets `emulators_folder` in settings and refreshes config paths so subsequent scans use the correct location.
+
+3. **Existing Emulator Detection** — Scans the chosen `emulators/` for `PPSSPP_win/PPSSPPWindows64.exe`, `PCSX2_win/pcsx2-qt.exe`, `RPCS3_win/rpcs3.exe`. Reads file-version metadata or `--version` output to show current versions.
+
+4. **Per-Emulator Update/Download Prompts** — **Two-step for installed, one-step for missing**:
+   - **Installed** → *"X v1.20 is already installed. Check for a newer version?"* (Yes/No)
+     - If **Yes** → queries GitHub Releases API (`hrydgard/ppsspp`, `PCSX2/pcsx2`, `RPCS3/rpcs3-binaries-win`)
+       - Update available → *"Update v1.20 → v1.21 available. Update now?"* (Yes/No)
+       - Up to date → logs "already up to date", no download
+     - If **No** → keeps current, no download
+   - **Not installed** → *"X is not installed. Download and install now?"* (Yes/No)
+
+5. **Download & Extract** — For each confirmed action: downloads portable Windows 64-bit build (ZIP for PPSSPP, 7z for PCSX2/RPCS3), extracts to `emulators/<CONSOLE>_win/`, handles BCJ2-filter 7z via system 7-Zip or downloaded `7zr.exe`.
+
+6. **Finalize** — Saves `folders`, `emulators_folder`, `custom_consoles` to `playtime.json`, refreshes paths, re-scans games, launches dashboard.
+
+If the user declines all emulators, setup still completes; the dashboard will use any pre-existing portable emulators found in step 3.
 
 ## Commands Configuration
 
