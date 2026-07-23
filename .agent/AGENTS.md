@@ -2,6 +2,21 @@
 
 This file defines style guidelines and behavioral constraints for agents working on the Game Machine codebase.
 
+## Mandatory Wiki Logging (Applies to EVERY change, no exceptions)
+
+**Every single change to the codebase MUST be logged in the wiki.** This is the highest-priority rule and overrides any "small change" excuse.
+
+- **Scope**: ANY modification to ANY file in the repository — code (`*.py`), UI (`ui/*`), config (`.agent/*`, `*.json`), wiki/docs, or scripts. Adding, editing, renaming, or deleting a file all count.
+- **Where**: A new entry MUST be added at the TOP of [log.md](file:///c:/Users/jadam/Desktop/Game-Machine/wiki/log.md) describing what changed and why.
+- **Format**: `## [YYYY-MM-DD] <type> | <short title>` followed by bullet points of what changed and where (file:line references encouraged). `<type>` is one of `feature`, `bugfix`, `refactor`, `config`, `doc`, `ingest`, `system`.
+- **Affected pages**: If the change touches architecture, file structure, smart features, resolved bugs, emulator setup, the UI philosophy, or the roadmap, the corresponding `wiki/` page AND `wiki/index.md` MUST also be updated.
+- **No exceptions**: A one-line fix still gets a log entry. A pure wiki/doc edit still gets a log entry. There is no change too small to log.
+- This rule is enforced as step 1 of the [Mandatory Change Workflow](#mandatory-change-workflow-applies-to-every-modification) below — a change is not complete until it is logged.
+
+## Git Commit & Push is EXPLICIT-ONLY (do not auto-push)
+
+**Wiki logging is mandatory on EVERY change, but `git add` / `git commit` / `git push` MUST ONLY run when the user explicitly requests it** (e.g. says "git commit and push it"). On every other change, finish the wiki log + tests and STOP — do not stage or push. Treat the absence of an explicit "commit/push" instruction as "log it, but leave it uncommitted".
+
 ## The LLM Wiki System
 
 We maintain a persistent, compounding knowledge base under `wiki/` powered by raw source materials stored under `sources/`.

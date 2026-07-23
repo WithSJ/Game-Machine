@@ -2,6 +2,29 @@
 
 This file is a chronological log of operations performed on the Wiki (latest logs on top).
 
+## [2026-07-24] config | Git commit/push is explicit-only; wiki logging stays mandatory
+
+Refined the workspace rule so wiki logging remains mandatory on EVERY change, but `git add` /
+`git commit` / `git push` only run when the user explicitly asks (e.g. "git commit and push it").
+All other changes are logged + tested, then left uncommitted.
+
+### Files Modified
+- `.agent/AGENTS.md` — added "Git Commit & Push is EXPLICIT-ONLY" section between the wiki-logging
+  rule and "The LLM Wiki System".
+- `wiki/log.md` — this entry.
+
+## [2026-07-24] config | Enforce mandatory wiki logging for EVERY codebase change
+
+Added a new top-level rule "Mandatory Wiki Logging (Applies to EVERY change, no exceptions)" to
+`.agent/AGENTS.md`. Every modification to any file in the repo — code, UI, config, wiki, or
+scripts — must be logged at the top of `wiki/log.md` (and affected wiki pages / `index.md` updated
+when relevant). The rule explicitly forbids "too small to log" exceptions and is wired in as step 1
+of the Mandatory Change Workflow.
+
+### Files Modified
+- `.agent/AGENTS.md` — new "Mandatory Wiki Logging" section above "The LLM Wiki System".
+- `wiki/log.md` — this entry.
+
 ## [2026-07-24] config | Rename `.agents/` workspace directory to `.agent/`
 
 Renamed the hidden agent workspace directory from `.agents/` to `.agent/` (singular) and
