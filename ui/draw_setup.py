@@ -18,6 +18,7 @@ from ui.theme import (
 )
 from ui.helpers import parallelogram
 from core.config import get_emulators_dir, EMULATOR_DOWNLOADS
+from core.emulator_version import scan_existing_emulators, check_emulator_updates
 
 
 def pick_directory(title="Select Folder"):
@@ -42,7 +43,7 @@ class AutoSetupThread:
         self.root_folder = root_folder
         self.active = False
         self.step = 0
-        self.total_steps = 6
+        self.total_steps = 8
         self.progress = 0.0
         self.status = ""
         self.log_lines = []
@@ -50,6 +51,17 @@ class AutoSetupThread:
         self.thread = None
         self.finished = False
         self.success = False
+        
+        # For user prompts during setup
+        self.awaiting_user_input = False
+        self.user_prompt = None
+        self.user_response = None
+        
+        # Track user decisions per emulator
+        self.emulator_decisions = {}  # {emulator_name: {"update": bool, "download": bool}}
+        self.emulator_info = {}  # {emulator_name: {"installed": bool, "version": str, "update_available": bool, "latest": str}}
+        self.current_prompt_index = 0
+        self.prompts = []  # List of prompts to show
 
     def start(self):
         self.active = True
@@ -62,38 +74,41 @@ class AutoSetupThread:
         try:
             self._log("Starting Game Machine automatic setup...")
             
-            # Step 1: Create folder structure
+            # Step 1: Set emulators folder (must be first so config paths
+            # are correct when we scan for existing emulators)
             self.step = 1
-            self.status = "Creating folder structure..."
-            self._update_progress()
-            self._create_folders()
-            
-            # Step 2: Set emulators folder
-            self.step = 2
             self.status = "Configuring emulators folder..."
             self._update_progress()
             self._setup_emulators_folder()
             
-            # Step 3: Download PPSSPP
+            # Step 2: Check existing emulators and versions
+            self.step = 2
+            self.status = "Checking existing emulators..."
+            self._update_progress()
+            self._check_existing_emulators()
+            
+            # Step 3: Create folder structure
             self.step = 3
-            self.status = "Downloading PPSSPP (PSP)..."
+            self.status = "Creating folder structure..."
             self._update_progress()
-            self._download_emulator("PPSSPP")
+            self._create_folders()
             
-            # Step 4: Download PCSX2
+            # Step 4: Check for updates and prompt user
             self.step = 4
-            self.status = "Downloading PCSX2 (PS2)..."
+            self.status = "Checking for emulator updates..."
             self._update_progress()
-            self._download_emulator("PCSX2")
+            self._check_and_prompt_updates()
             
-            # Step 5: Download RPCS3
-            self.step = 5
-            self.status = "Downloading RPCS3 (PS3)..."
-            self._update_progress()
-            self._download_emulator("RPCS3")
+            # Step 5-7: Download emulators (PPSSPP, PCSX2, RPCS3)
+            emulators = ["PPSSPP", "PCSX2", "RPCS3"]
+            for i, emu in enumerate(emulators):
+                self.step = 5 + i
+                self.status = f"Installing {emu}..."
+                self._update_progress()
+                self._download_emulator(emu)
             
-            # Step 6: Save settings and finish
-            self.step = 6
+            # Step 8: Save settings and finish
+            self.step = 8
             self.status = "Finalizing setup..."
             self._update_progress()
             self._finalize()
@@ -142,17 +157,180 @@ class AutoSetupThread:
             self._log(f"Created: emulators/{emu}/")
 
     def _setup_emulators_folder(self):
-        """Configure emulators folder in settings."""
+        """Configure emulators folder in settings and refresh config module."""
         emu_dir = os.path.join(self.root_folder, "emulators")
         self.gm.settings["emulators_folder"] = emu_dir
+        self.gm.settings["folders"] = [self.root_folder]
+        self.gm.folders = [self.root_folder]
+
+        # Save settings so config.refresh_paths() picks them up
+        from core.playdata import save_playdata
+        save_playdata(self.gm.playdata)
+
+        # Refresh config module paths so get_emulators_dir() returns correct path
+        from core.config import refresh_paths
+        refresh_paths()
+
         self._log(f"Emulators folder: {emu_dir}")
+
+    def _check_existing_emulators(self):
+        """Check what emulators are already installed."""
+        emu_dir = os.path.join(self.root_folder, "emulators")
+        existing = scan_existing_emulators(emu_dir)
+        self._log(f"Found existing emulators: {', '.join([k for k,v in existing.items() if v['installed']]) or 'None'}")
+        for name, info in existing.items():
+            if info["installed"]:
+                self._log(f"  {name}: v{info['version']} ({info['exe_path']})")
+
+    def _check_and_prompt_updates(self):
+        """Check for updates and prompt user for each emulator (installed or not).
+
+        Flow for an INSTALLED emulator:
+          1. Ask "check for update?" (yes/no)
+          2. If yes and an update is available -> ask "update now?" (yes/no)
+          3. If no (declined check) or no update available -> keep current, no download
+
+        Flow for a NOT-INSTALLED emulator:
+          1. Ask "download?" (yes/no)
+        """
+        # Get installed emulators and their versions
+        emu_dir = os.path.join(self.root_folder, "emulators")
+        installed = scan_existing_emulators(emu_dir)
+
+        # Initialize emulator_info for all three
+        for emu_name in ["PPSSPP", "PCSX2", "RPCS3"]:
+            info = installed.get(emu_name, {"installed": False, "version": None})
+            self.emulator_info[emu_name] = {
+                "installed": info["installed"],
+                "version": info["version"],
+                "update_available": False,
+                "latest": EMULATOR_DOWNLOADS[emu_name]["version"],
+                "download_url": EMULATOR_DOWNLOADS[emu_name]["url"],
+                "release_url": "",
+            }
+
+        # Build the initial prompt queue
+        self.prompts = []
+        for emu_name in ["PPSSPP", "PCSX2", "RPCS3"]:
+            info = installed.get(emu_name, {"installed": False, "version": None})
+            if info["installed"]:
+                # Already present -> ask whether to check for an update
+                self.prompts.append({
+                    "type": "check_update",
+                    "emulator": emu_name,
+                    "current": info["version"],
+                })
+            else:
+                # Not installed -> ask to download
+                self.prompts.append({
+                    "type": "download",
+                    "emulator": emu_name,
+                    "current": "Not installed",
+                    "version": EMULATOR_DOWNLOADS[emu_name]["version"],
+                })
+
+        if not self.prompts:
+            self._log("No emulators to configure")
+            return
+
+        self._log(f"Found {len(self.prompts)} emulator(s) to configure")
+
+        # Process prompts one by one (a "check_update" YES may inject an "update" prompt)
+        i = 0
+        while i < len(self.prompts):
+            prompt = self.prompts[i]
+            emu = prompt["emulator"]
+
+            self.current_prompt_index = i
+            self.awaiting_user_input = True
+            self.user_prompt = prompt
+            self.user_response = None
+
+            # Wait for user response (main thread shows the prompt)
+            import time
+            while self.awaiting_user_input and self.active:
+                time.sleep(0.1)
+
+            if not self.active:
+                raise RuntimeError("Setup cancelled by user")
+
+            if prompt["type"] == "check_update":
+                if self.user_response:
+                    # User wants to check for updates -> query GitHub
+                    self._log(f"Checking for {emu} updates...")
+                    updates = check_emulator_updates(emu_dir)
+                    u = updates.get(emu, {})
+                    if u.get("update_available"):
+                        # Inject an update prompt right after this one
+                        self.prompts.insert(i + 1, {
+                            "type": "update",
+                            "emulator": emu,
+                            "current": u.get("current", self.emulator_info[emu]["version"]),
+                            "latest": u.get("latest"),
+                            "release_url": u.get("release_url", ""),
+                        })
+                        self.emulator_info[emu].update({
+                            "update_available": True,
+                            "latest": u.get("latest"),
+                            "download_url": u.get("download_url", EMULATOR_DOWNLOADS[emu]["url"]),
+                            "release_url": u.get("release_url", ""),
+                        })
+                        self._log(f"Update available for {emu}: v{u.get('current')} -> v{u.get('latest')}")
+                    else:
+                        self._log(f"{emu} is already up to date (v{self.emulator_info[emu]['version']})")
+                else:
+                    self._log(f"Skipping update check for {emu} (keeping current)")
+                # No download decision yet; update decision recorded later if an
+                # injected "update" prompt is answered YES.
+                self.emulator_decisions.setdefault(emu, {"update": False, "download": False})
+
+            elif prompt["type"] == "update":
+                self.emulator_decisions[emu] = {
+                    "update": bool(self.user_response),
+                    "download": False,
+                }
+                if self.user_response:
+                    self._log(f"User chose to update {emu}")
+                else:
+                    self._log(f"User chose to skip {emu} update")
+
+            elif prompt["type"] == "download":
+                self.emulator_decisions[emu] = {
+                    "update": False,
+                    "download": bool(self.user_response),
+                }
+                if self.user_response:
+                    self._log(f"User chose to download {emu}")
+                else:
+                    self._log(f"User chose to skip {emu} download")
+
+            self.awaiting_user_input = False
+            self.user_prompt = None
+            i += 1
 
     def _download_emulator(self, console_name):
         """Download and extract a single emulator."""
-        info = EMULATOR_DOWNLOADS[console_name]
-        url = info["url"]
-        folder = info["folder"]
-        exe_name = info["exe"]
+        # Check user decision for this emulator
+        decision = self.emulator_decisions.get(console_name, {})
+        emu_info = self.emulator_info.get(console_name, {})
+        
+        # If emulator is installed and up to date, or user declined, skip
+        if emu_info.get("installed") and not emu_info.get("update_available"):
+            self._log(f"Skipping {console_name} (already installed and up to date)")
+            return
+        
+        if not decision.get("update", False) and not decision.get("download", False):
+            self._log(f"Skipping {console_name} (user declined)")
+            return
+        
+        # Use the latest download URL if available
+        if decision.get("update") and emu_info.get("download_url"):
+            url = emu_info["download_url"]
+        else:
+            url = EMULATOR_DOWNLOADS[console_name]["url"]
+        
+        folder = EMULATOR_DOWNLOADS[console_name]["folder"]
+        exe_name = EMULATOR_DOWNLOADS[console_name]["exe"]
         
         emulators_dir = os.path.join(self.root_folder, "emulators")
         target_dir = os.path.join(emulators_dir, folder)
@@ -192,7 +370,6 @@ class AutoSetupThread:
                 if not extracted:
                     # All extraction methods failed - save for manual extraction
                     manual_path = os.path.join(emulators_dir, f"{folder}.7z")
-                    # Copy instead of move to avoid file lock issues
                     shutil.copy2(temp_file, manual_path)
                     self._log(f"ERROR: Could not auto-extract {console_name} (needs 7-Zip with BCJ2 support)")
                     self._log(f"Saved 7z file to: {manual_path}")
@@ -412,6 +589,11 @@ def draw_setup(gm, now):
             draw_setup_error(gm, now)
         return
 
+    # Check if waiting for user input (update confirmation)
+    if getattr(gm, "auto_setup", None) and gm.auto_setup.awaiting_user_input:
+        draw_update_prompt(gm, now)
+        return
+
     # --- MAIN SETUP UI ---
     # Center panel - increased height to prevent overlap
     panel_w, panel_h = 700, 400
@@ -438,6 +620,7 @@ def draw_setup(gm, now):
         "Welcome to Game Machine!",
         "This will automatically set up everything:",
         "  • Create folder structure (PSP_iso, PS2_iso, PS3_iso, emulators/, covers/)",
+        "  • Check existing emulators & prompt for updates",
         "  • Download & install PPSSPP, PCSX2, RPCS3 portable emulators",
         "  • Configure all paths for portable use",
         "",
@@ -556,15 +739,17 @@ def draw_auto_setup_progress(gm, now):
     # Step indicators
     step_y = bar_y + 50
     steps = [
-        ("1", "Create Folders"),
-        ("2", "Configure Emulators"),
-        ("3", "Download PPSSPP"),
-        ("4", "Download PCSX2"),
-        ("5", "Download RPCS3"),
-        ("6", "Finalize"),
+        ("1", "Config Emulators"),
+        ("2", "Check Emulators"),
+        ("3", "Create Folders"),
+        ("4", "Check Updates"),
+        ("5", "Install PPSSPP"),
+        ("6", "Install PCSX2"),
+        ("7", "Install RPCS3"),
+        ("8", "Finalize"),
     ]
     for i, (num, label) in enumerate(steps):
-        x = px + 30 + i * 125
+        x = px + 30 + i * 95
         y = step_y
         completed = i < setup.step - 1
         current = i == setup.step - 1
@@ -606,11 +791,13 @@ def draw_auto_setup_progress(gm, now):
         line_y = log_r.y + 8 + i * line_h
         if line_y + line_h > log_r.bottom - 8:
             break
-        color = COL_DIM if "Created" in line or "Downloading" in line else COL_TEXT
+        color = COL_DIM
         if "ERROR" in line.upper():
             color = COL_BTN_B
-        elif "success" in line.lower() or "installed" in line.lower():
+        elif "success" in line.lower() or "installed" in line.lower() or "created" in line.lower():
             color = COL_PAD_OK
+        elif "Downloading" in line or "Extracting" in line:
+            color = COL_BRAND
         line_s = log_font.render(line, True, color)
         scr.blit(line_s, (log_r.x + 10, line_y))
 
@@ -626,6 +813,123 @@ def draw_auto_setup_progress(gm, now):
             y = spin_y + int(12 * math.sin(rad))
             alpha = int(255 * (1 - i / 8))
             pygame.draw.circle(scr, accent + (alpha,), (x, y), 4)
+
+
+def draw_update_prompt(gm, now):
+    """Draw the emulator update/download confirmation prompt."""
+    scr = gm.screen
+    accent = COL_BRAND
+    setup = gm.auto_setup
+    prompt = setup.user_prompt
+
+    # Dark overlay
+    overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+    overlay.fill((0, 0, 0, 200))
+    scr.blit(overlay, (0, 0))
+
+    # Prompt panel
+    pw, ph = 600, 380
+    px = (SCREEN_W - pw) // 2
+    py = (SCREEN_H - ph) // 2
+    panel_r = pygame.Rect(px, py, pw, ph)
+
+    pygame.draw.rect(scr, COL_PANEL, panel_r, border_radius=14)
+    pygame.draw.rect(scr, accent, (px, py, pw, 3), border_radius=14)
+    pygame.draw.rect(scr, mix(COL_BG, accent, 0.4), panel_r, 1, border_radius=14)
+
+    # Title and content based on prompt type
+    if prompt["type"] == "check_update":
+        title = "EMULATOR ALREADY INSTALLED"
+        name = prompt["emulator"]
+        current = prompt["current"]
+        latest = ""
+        msg = f"{name} v{current} is already installed.\nCheck for a newer version?"
+        yes_label = "YES, CHECK"
+        no_label = "NO, KEEP CURRENT"
+        hint = "Select YES to look for updates, NO to keep the installed version"
+    elif prompt["type"] == "update":
+        title = "EMULATOR UPDATE AVAILABLE"
+        name = prompt["emulator"]
+        current = prompt["current"]
+        latest = prompt["latest"]
+        msg = "A newer version is available. Update now?"
+        yes_label = "YES, UPDATE"
+        no_label = "NO, KEEP CURRENT"
+        hint = "Select YES to download latest version, NO to keep current"
+    else:  # download
+        title = "EMULATOR NOT INSTALLED"
+        name = prompt["emulator"]
+        current = prompt.get("current", "Not installed")
+        latest = prompt.get("version", prompt.get("latest", ""))
+        msg = f"{name} is not installed. Download and install now?"
+        yes_label = "YES, DOWNLOAD"
+        no_label = "NO, SKIP"
+        hint = "Select YES to download and install, NO to skip this emulator"
+
+    # Title
+    title_s = gm.f_popup_title.render(title, True, accent)
+    scr.blit(title_s, (px + (pw - title_s.get_width()) // 2, py + 20))
+
+    # Emulator name
+    name_s = gm.f_hero.render(name, True, COL_TEXT)
+    scr.blit(name_s, (px + (pw - name_s.get_width()) // 2, py + 70))
+
+    # Version info
+    ver_y = py + 130
+    current_s = gm.f_small.render(f"Current: v{current}", True, COL_DIM)
+    scr.blit(current_s, (px + 40, ver_y))
+
+    if latest:
+        latest_s = gm.f_small.render(f"Available: v{latest}", True, COL_PAD_OK)
+        scr.blit(latest_s, (px + 40, ver_y + 30))
+
+        # Arrow between versions
+        arrow_s = gm.f_btn.render("→", True, accent)
+        scr.blit(arrow_s, (px + pw//2 - 10, ver_y + 15))
+
+    # Message
+    msg_s = gm.f_small.render(msg, True, COL_TEXT)
+    scr.blit(msg_s, (px + (pw - msg_s.get_width()) // 2, ver_y + 70))
+
+    # Buttons
+    btn_w, btn_h = 160, 48
+    btn_gap = 30
+    total_w = btn_w * 2 + btn_gap
+    btn_x = px + (pw - total_w) // 2
+    btn_y = py + ph - 90
+
+    # YES button (primary)
+    yes_r = pygame.Rect(btn_x, btn_y, btn_w, btn_h)
+    gm.update_yes_rect = yes_r
+    
+    yes_hover = yes_r.collidepoint(pygame.mouse.get_pos())
+    yes_bg = COL_PAD_OK if yes_hover else mix(COL_BG, COL_PAD_OK, 0.2)
+    yes_border = COL_PAD_OK if yes_hover else COL_CARD_BORDER
+    
+    parallelogram(scr, yes_r, yes_bg, cut=8)
+    parallelogram(scr, yes_r, yes_border, cut=8, width=2 if not yes_hover else 0)
+    
+    yes_text = gm.f_btn.render(yes_label, True, COL_BG if yes_hover else COL_TEXT)
+    scr.blit(yes_text, yes_text.get_rect(center=yes_r.center))
+
+    # NO button (secondary)
+    no_r = pygame.Rect(btn_x + btn_w + btn_gap, btn_y, btn_w, btn_h)
+    gm.update_no_rect = no_r
+    
+    no_hover = no_r.collidepoint(pygame.mouse.get_pos())
+    no_bg = COL_BTN_B if no_hover else COL_PANEL2
+    no_border = COL_BTN_B if no_hover else COL_CARD_BORDER
+    
+    parallelogram(scr, no_r, no_bg, cut=8)
+    if not no_hover:
+        parallelogram(scr, no_r, no_border, cut=8, width=1)
+    
+    no_text = gm.f_btn.render(no_label, True, COL_TEXT_ON_RED if no_hover else COL_DIM)
+    scr.blit(no_text, no_text.get_rect(center=no_r.center))
+
+    # Hint
+    hint_s = gm.f_small.render(hint, True, COL_DIMMER)
+    scr.blit(hint_s, (px + (pw - hint_s.get_width()) // 2, btn_y + btn_h + 10))
 
 
 def draw_setup_complete(gm, now):
@@ -669,7 +973,7 @@ def draw_setup_complete(gm, now):
 
 
 def draw_setup_error(gm, now):
-    """Draw error screen if setup fails - shows full logs for debugging."""
+    """Draw error screen if setup fails."""
     scr = gm.screen
     accent = COL_BTN_B
     setup = gm.auto_setup
@@ -678,70 +982,38 @@ def draw_setup_error(gm, now):
     overlay.fill((0, 0, 0, 220))
     scr.blit(overlay, (0, 0))
 
-    pw, ph = 800, 550
+    pw, ph = 600, 400
     px = (SCREEN_W - pw) // 2
     py = (SCREEN_H - ph) // 2
 
     pygame.draw.rect(scr, COL_PANEL, (px, py, pw, ph), border_radius=14)
     pygame.draw.rect(scr, accent, (px, py, pw, 3), border_radius=14)
-    pygame.draw.rect(scr, mix(COL_BG, accent, 0.4), (px, py, pw, ph), 1, border_radius=14)
 
     title_s = gm.f_popup_title.render("SETUP FAILED", True, accent)
     scr.blit(title_s, (px + (pw - title_s.get_width()) // 2, py + 20))
 
-    # Error summary
-    err_summary = setup.error if setup.error else "Unknown error"
-    err_s = gm.f_small.render(f"Error: {err_summary}", True, COL_BTN_B)
-    scr.blit(err_s, (px + 30, py + 60))
-
-    # Full log area
-    log_label = gm.f_small.render("Setup Logs (most recent first):", True, COL_DIM)
-    scr.blit(log_label, (px + 30, py + 90))
-
-    log_r = pygame.Rect(px + 20, py + 115, pw - 40, ph - 170)
-    pygame.draw.rect(scr, COL_BG, log_r, border_radius=6)
-    pygame.draw.rect(scr, COL_CARD_BORDER, log_r, 1, border_radius=6)
-
-    # Draw log lines (most recent at bottom)
-    log_font = gm.f_mono
-    line_h = 18
-    visible_lines = log_r.h // line_h
-    start_idx = max(0, len(setup.log_lines) - visible_lines)
-    
-    for i, line in enumerate(setup.log_lines[start_idx:]):
-        line_y = log_r.y + 8 + i * line_h
-        if line_y + line_h > log_r.bottom - 8:
-            break
-        color = COL_DIM
-        if "ERROR" in line.upper():
-            color = COL_BTN_B
-        elif "success" in line.lower() or "installed" in line.lower() or "created" in line.lower():
-            color = COL_PAD_OK
-        elif "Downloading" in line or "Extracting" in line:
-            color = COL_BRAND
-        line_s = log_font.render(line, True, color)
-        scr.blit(line_s, (log_r.x + 10, line_y))
+    # Error message
+    err_lines = setup.error.split('\n') if setup.error else ["Unknown error"]
+    for i, line in enumerate(err_lines[:5]):
+        err_s = gm.f_small.render(line, True, COL_TEXT)
+        scr.blit(err_s, (px + 30, py + 80 + i * 28))
 
     # Retry / Exit buttons
     btn_w, btn_h = 180, 48
-    btn_y = py + ph - 70
+    btn_y = py + ph - 80
     retry_r = pygame.Rect(px + pw//2 - btn_w - 20, btn_y, btn_w, btn_h)
     exit_r = pygame.Rect(px + pw//2 + 20, btn_y, btn_w, btn_h)
 
-    gm.setup_retry_rect = retry_r
-    gm.setup_exit_rect = exit_r
+    gm.retry_btn_rect = retry_r
+    gm.exit_btn_rect = exit_r
 
-    for r, label, color in [(retry_r, "RETRY SETUP", COL_PAD_OK), (exit_r, "EXIT", COL_BTN_B)]:
+    for r, label, color in [(retry_r, "RETRY", COL_PAD_OK), (exit_r, "EXIT", COL_BTN_B)]:
         hover = r.collidepoint(pygame.mouse.get_pos())
         bg = color if hover else mix(COL_BG, color, 0.2)
         parallelogram(scr, r, bg, cut=8)
         parallelogram(scr, r, color, cut=8, width=2 if not hover else 0)
         text = gm.f_btn.render(label, True, COL_BG if hover else COL_TEXT)
         scr.blit(text, text.get_rect(center=r.center))
-
-    # Hint
-    hint_s = gm.f_small.render("Check logs above for details. RETRY will restart from beginning.", True, COL_DIMMER)
-    scr.blit(hint_s, (px + (pw - hint_s.get_width()) // 2, btn_y + btn_h + 10))
 
 
 # Keep the old help modal for reference (can be removed if not needed)

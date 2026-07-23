@@ -954,8 +954,14 @@ class GameMachine:
     # ---------------- drawing ----------------
     def draw(self, now):
         if getattr(self, "needs_setup", False):
+            # Check if auto-setup is waiting for user input (update prompt).
+            # This takes priority over the progress screen because the thread
+            # is still "active" while it waits for a YES/NO answer.
+            if getattr(self, "auto_setup", None) and self.auto_setup.awaiting_user_input:
+                from ui.draw_setup import draw_update_prompt
+                draw_update_prompt(self, now)
             # Check if auto-setup is running
-            if getattr(self, "auto_setup", None) and self.auto_setup.active:
+            elif getattr(self, "auto_setup", None) and self.auto_setup.active:
                 from ui.draw_setup import draw_auto_setup_progress
                 draw_auto_setup_progress(self, now)
             elif getattr(self, "auto_setup", None) and self.auto_setup.finished:
@@ -1012,7 +1018,34 @@ class GameMachine:
         draw_settings(self, now)
 
     def handle_setup_event(self, e):
-        # If auto-setup is running, only allow ESC to cancel
+        # If auto-setup is waiting for user input (update prompt), handle it
+        # FIRST. The thread is still "active" while waiting, so this must be
+        # checked before the "active -> ESC only" block below.
+        if getattr(self, "auto_setup", None) and self.auto_setup.awaiting_user_input:
+            if e.type == pygame.KEYDOWN:
+                if e.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE, pygame.K_y):
+                    self.auto_setup.user_response = True
+                    self.auto_setup.awaiting_user_input = False
+                elif e.key in (pygame.K_ESCAPE, pygame.K_n):
+                    self.auto_setup.user_response = False
+                    self.auto_setup.awaiting_user_input = False
+            elif e.type == pygame.JOYBUTTONDOWN:
+                if e.button == 0:  # A = Yes
+                    self.auto_setup.user_response = True
+                    self.auto_setup.awaiting_user_input = False
+                elif e.button == 1:  # B = No
+                    self.auto_setup.user_response = False
+                    self.auto_setup.awaiting_user_input = False
+            elif e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
+                if hasattr(self, 'update_yes_rect') and self.update_yes_rect.collidepoint(e.pos):
+                    self.auto_setup.user_response = True
+                    self.auto_setup.awaiting_user_input = False
+                elif hasattr(self, 'update_no_rect') and self.update_no_rect.collidepoint(e.pos):
+                    self.auto_setup.user_response = False
+                    self.auto_setup.awaiting_user_input = False
+            return
+
+        # If auto-setup is running (and not awaiting input), only allow ESC to cancel
         if getattr(self, "auto_setup", None) and self.auto_setup.active:
             if e.type == pygame.KEYDOWN and e.key == pygame.K_ESCAPE:
                 self.auto_setup = None  # Cancel setup
@@ -1047,7 +1080,7 @@ class GameMachine:
                 self.auto_setup = None
             return
 
-        # Normal setup screen (2 buttons: Setup Game Machine, Exit)
+# Normal setup screen (2 buttons: Setup Game Machine, Exit)
         if e.type == pygame.KEYDOWN:
             if e.key in (pygame.K_UP, pygame.K_w):
                 self.setup_sel = (self.setup_sel - 1) % 2
@@ -1140,6 +1173,9 @@ class GameMachine:
     def _check_auto_setup_complete(self):
         """Check if auto-setup finished and transition to dashboard."""
         if getattr(self, "auto_setup", None) and self.auto_setup.finished:
+            # Don't finish if waiting for user input (update prompts)
+            if self.auto_setup.awaiting_user_input:
+                return
             if self.auto_setup.success:
                 self.finish_setup()
             else:
