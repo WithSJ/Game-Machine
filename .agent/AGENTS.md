@@ -9,7 +9,7 @@ We maintain a persistent, compounding knowledge base under `wiki/` powered by ra
 1. **Consult first**: Before answering architectural questions or starting changes, read `wiki/index.md` and check the relevant wiki pages.
 2. **Co-evolution**: Keep the wiki in sync with codebase modifications. When you add features or refactor code, update the corresponding wiki pages.
 3. **Operations**:
-   - For ingestion, querying, and linting, refer to the custom skill [wiki-maintainer](file:///c:/Users/jadam/Desktop/Game-Machine/.agents/skills/wiki-maintainer/SKILL.md).
+   - For ingestion, querying, and linting, refer to the custom skill [wiki-maintainer](file:///c:/Users/jadam/Desktop/Game-Machine/.agent/skills/wiki-maintainer/SKILL.md).
    - Log all operations chronologically in [log.md](file:///c:/Users/jadam/Desktop/Game-Machine/wiki/log.md) (latest entries on top).
    - Keep the [index.md](file:///c:/Users/jadam/Desktop/Game-Machine/wiki/index.md) fully up-to-date.
 
@@ -22,7 +22,7 @@ We maintain a persistent, compounding knowledge base under `wiki/` powered by ra
 1. **Test before staging.** After you finish writing/editing code, you MUST run a verification step BEFORE running `git add`. The verification must actually exercise the code you changed — not just `py_compile`. Examples by change type:
    - **Python source change** (`*.py`): at minimum `python -m py_compile <changed_files>`. For UI/draw code, also run an offscreen render test that calls the modified `draw_*` function. For launcher/core logic, run a smoke test that imports the module and calls the changed function with synthetic input.
    - **UI / visual change** (anything under `ui/`): run the offscreen boot test that exercises every `draw_*` path (main screen, launch popup, exit menu, settings panel, setup screen, setup help modal). Verify no `NameError`, no crash, and that the expected pixels render with the correct theme tokens.
-   - **Wiki / docs / config change** (`wiki/*.md`, `.agents/*`, `*.json`): verify the file parses (for Markdown, check headers and links; for JSON, run `python -c "import json; json.load(open(...))"`; for YAML frontmatter in skill files, sanity-check the `name:` and `description:` fields).
+   - **Wiki / docs / config change** (`wiki/*.md`, `.agent/*`, `*.json`): verify the file parses (for Markdown, check headers and links; for JSON, run `python -c "import json; json.load(open(...))"`; for YAML frontmatter in skill files, sanity-check the `name:` and `description:` fields).
    - If you don't know what test to run, ASK the user before proceeding.
 
 2. **Report the test result to the user.** Show what you ran, what passed, and what (if anything) failed. If anything failed, fix it and re-test before going further. Do NOT move to step 3 until every test passes.
@@ -55,7 +55,7 @@ We maintain a persistent, compounding knowledge base under `wiki/` powered by ra
    - Add a new entry at the TOP of [`wiki/log.md`](file:///c:/Users/jadam/Desktop/Game-Machine/wiki/log.md) describing what changed and why.
    - Use the existing entry format: `## [YYYY-MM-DD] <type> | <short title>` followed by bullet points. `<type>` is one of `feature`, `bugfix`, `refactor`, `config`, `doc`, `ingest`, `system`.
    - If the change affects architecture, file structure, smart features, resolved bugs, emulator setup, or the roadmap, also update the corresponding page under `wiki/` and `wiki/index.md`.
-   - Consult the [wiki-maintainer](file:///c:/Users/jadam/Desktop/Game-Machine/.agents/skills/wiki-maintainer/SKILL.md) skill for ingestion/linting workflows when unsure.
+   - Consult the [wiki-maintainer](file:///c:/Users/jadam/Desktop/Game-Machine/.agent/skills/wiki-maintainer/SKILL.md) skill for ingestion/linting workflows when unsure.
 
 2. **Test the change** — follow the "Mandatory Testing Before Git Commit & Push" section above. **Do not proceed to step 3 until the user has confirmed the test result.**
 
@@ -80,7 +80,7 @@ We maintain a persistent, compounding knowledge base under `wiki/` powered by ra
 
 **Every time you add, modify, or refactor any file under `ui/`, any `draw_*` function, anything that renders pixels to the screen, or anything that adds a button / popup / icon / animation / color / font size — you MUST follow this workflow without exception:**
 
-1. **Load the UI Design Philosophy skill first** — `.agents/skills/ui-design-philosophy/SKILL.md` (or `wiki/ui_design_philosophy.md` directly). Read it end-to-end before writing any draw code.
+1. **Load the UI Design Philosophy skill first** — `.agent/skills/ui-design-philosophy/SKILL.md` (or `wiki/ui_design_philosophy.md` directly). Read it end-to-end before writing any draw code.
 2. **Pick the correct button archetype** (A parallelogram / B rounded chip / C list row) per §4 of the philosophy. Never invent a fourth archetype.
 3. **Source colors from `ui/theme.py` tokens or `mix()`** — no raw RGB tuples in draw code.
 4. **Pick fonts from the existing type scale** in `app.py::__init__` — no new sizes without a token and a philosophy update.
@@ -94,8 +94,8 @@ We maintain a persistent, compounding knowledge base under `wiki/` powered by ra
 If you are unsure whether a change counts as a "UI change", it does. When in doubt, load the skill.
 
 ## Related Resources
-- [UI Design Philosophy Skill](file:///c:/Users/jadam/Desktop/Game-Machine/.agents/skills/ui-design-philosophy/SKILL.md)
+- [UI Design Philosophy Skill](file:///c:/Users/jadam/Desktop/Game-Machine/.agent/skills/ui-design-philosophy/SKILL.md)
 - [UI Design Philosophy (wiki)](file:///c:/Users/jadam/Desktop/Game-Machine/wiki/ui_design_philosophy.md)
-- [Wiki Maintainer Skill](file:///c:/Users/jadam/Desktop/Game-Machine/.agents/skills/wiki-maintainer/SKILL.md)
+- [Wiki Maintainer Skill](file:///c:/Users/jadam/Desktop/Game-Machine/.agent/skills/wiki-maintainer/SKILL.md)
 - [Wiki Index](file:///c:/Users/jadam/Desktop/Game-Machine/wiki/index.md)
 - [Wiki Log](file:///c:/Users/jadam/Desktop/Game-Machine/wiki/log.md)

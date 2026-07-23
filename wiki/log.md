@@ -2,6 +2,133 @@
 
 This file is a chronological log of operations performed on the Wiki (latest logs on top).
 
+## [2026-07-24] config | Rename `.agents/` workspace directory to `.agent/`
+
+Renamed the hidden agent workspace directory from `.agents/` to `.agent/` (singular) and
+updated every reference to it across the wiki and agent docs so links and paths stay valid.
+
+### Changes
+- Moved directory `.agents/` -> `.agent/`.
+- `wiki/log.md` - 6 historical log entries updated (`.agents/AGENTS.md`, `.agents/skills/...`).
+- `.agent/AGENTS.md` - 7 path/link references updated.
+- `.agent/skills/ui-design-philosophy/SKILL.md` - 2 link references updated.
+
+### Verification
+- `grep -rn "\.agents" .` returns zero matches.
+- Directory `.agent/` exists and contains `AGENTS.md` + `skills/`.
+
+## [2026-07-24] feature | Continuous Save Protection + PPSSPP Redirect + PS2 MemoryCards Fix + Game Save Restore
+
+Extended the User Data Protection system so ALL three emulators now redirect their
+game-save data into `Data/Saves/`, a per-session watcher backs up saves continuously
+while playing, and a Settings UI lets users manually backup/restore and toggle the
+watcher on/off.
+
+### PPSSPP SAVEDATA Redirect (`core/launcher.py` — NEW)
+- Added `_ensure_ppsspp_redirect()` — NTFS junction `<emu_dir>/memstick/PSP/SAVEDATA` → `Data/Saves/PSP/`.
+- Junctions ONLY the SAVEDATA folder (not the whole memstick/PSP tree) so PPSSPP save states remain in their expected location for the `--state=<path>` launch flow.
+- Reuses the existing `_replace_dir_with_junction()` helper (same pattern as RPCS3).
+- Called idempotently before every PSP launch in `launch_game()`.
+
+### PS2 MemoryCards Folder Fix (`core/launcher.py`, `core/savestates.py`)
+- PCSX2 `MemoryCards` path changed from `Data/Saves/PS2` (flat) → `Data/Saves/PS2/MemoryCards/` (subfolder).
+- One-time migration moves existing flat `.ps2` files into the new subfolder.
+- `get_savedata_dirs()` PS2 branch updated to check `MemoryCards/` subfolder first, with the flat layout as a legacy fallback.
+- Fixes the previous design flaw where 8MB memory cards were duplicated into every `<game_id>/` folder.
+
+### Game Save Restore (`core/savesync.py`)
+- Added `restore_game_saves()` — mirrors `restore_save_state()` but for in-game saves.
+- Called pre-launch in `launch_game()` AFTER the redirect calls, so:
+  - When junction is in place: the live dir IS the backup dir → no-op (same-file guard).
+  - When redirect failed: copies backup files into the real emulator dir so the emulator finds them.
+- PS2 is always a no-op (memory cards are shared, not per-game).
+- Added `get_backed_up_game_saves()` for UI restore options.
+- Added `backup_all_saves()` / `restore_all_saves()` bulk helpers for the Settings panel.
+
+### Database Schema Extension (`core/database.py`)
+- Added columns `game_save_paths TEXT DEFAULT '[]'` and `last_save_backup_at INTEGER DEFAULT 0`.
+- Added `_add_column_if_missing()` for idempotent `ALTER TABLE` migrations in `init_db()`.
+- Added CRUD: `update_game_save_paths()`, `get_game_save_paths()`, `update_last_save_backup_at()`, `get_last_save_backup_at()`, `get_last_save_backup_at_bulk()`.
+- `backup_game_saves()` now writes backup paths + timestamp to DB after each session.
+- `_row_to_game_dict()` extended with the two new fields (tolerant of older DBs).
+
+### Continuous Save Protection Watcher (`core/savewatcher.py` — NEW)
+- `SaveWatcher` class: per-session daemon thread spawned in `launch_game()` before `Popen`, killed after `proc.wait()`.
+- Polls the game's save-state + savedata directories every 30s; copies changed files into `Data/SaveStates/` and `Data/Saves/` backup dirs.
+- Skips files within 2s of "now" (mid-write guard) and sources that are junctioned into the backup target (same-file guard).
+- Primes an mtime+size snapshot on start so only incremental changes trigger copies.
+- Controlled by the `save_protection` setting (default ON, opt-out). Read via `_save_protection_enabled()` in launcher.py.
+
+### Settings UI: BACKUP & RESTORE Section (`ui/draw_settings.py`)
+- SYSTEM tab extended with a "BACKUP & RESTORE" section below the existing power options.
+- Three List Option Rows (archetype C): "Backup All Saves" (with "Last: Xm ago" value), "Restore All Saves", "Save Protection: ON/OFF" toggle.
+- Uses `database.get_last_save_backup_at_bulk()` to compute the global last-backup label.
+
+### Settings Action Dispatch (`app.py`)
+- `_settings_execute()` handles three new actions: `backup_all_saves`, `restore_all_saves`, `toggle_save_protection`.
+- `_backup_all_saves()` / `_restore_all_saves()` run in background threads (non-blocking UI) and show toast notifications on completion.
+- `_toggle_save_protection()` persists the flag to `playtime.json __settings__`.
+
+## [2026-07-24] feature | User Data Protection System (SQLite DB + Save State Backup + ROM-Missing Persistence)
+
+Implemented the core principle: **Games can be replaced. User memories cannot.**
+Player gaming history, save states, and game saves now survive ROM deletion,
+emulator reinstallation, or migration to a new PC.
+
+### SQLite Database (`core/database.py` — NEW)
+- Created `games` table with stable `game_id` (disc serial or `CONSOLE::name` fallback).
+- Fields: name, console, serial, total_play_time, last_played, favorite, installed, rom_path, cover_path, screenshot_paths, save_state_paths.
+- CRUD operations: `upsert_game`, `mark_missing`, `add_playtime`, `get_recents`, `get_game_stats`, `get_all_games`, `update_save_state_paths`.
+- `migrate_playtime_json()` imports legacy playtime.json game records on first boot.
+- `compute_game_id()` extracts serial from ISOs (PSP `DISC_ID`, PS2 `BOOT2` serial, PS3 `TITLE_ID`).
+
+### Save State + Game Save Backup (`core/savesync.py` — NEW)
+- `backup_save_states()` — after each session, copies save states from emulator dirs to `Data/SaveStates/<CONSOLE>/<game_id>/`.
+- `backup_game_saves()` — copies game save files/folders to `Data/Saves/<CONSOLE>/<game_id>/`.
+- `restore_save_state()` — if a save state is missing from the emulator dir but exists in backup, restores it before launch.
+- `sync_after_session()` — called by launcher.py after emulator exit.
+- Per-emulator file matching: PSP `<DISC_ID>_*.ppst`, PS2 `<serial> (*.p2s`, PS3 `savestates/<TITLE_ID>/*.SAVESTAT`.
+- Per-emulator savedata discovery: PSP `SAVEDATA/`, PS2 `memcards/`, PS3 `dev_hdd0/.../savedata/`.
+
+### ROM-Missing Persistence (`core/scanner.py`, `core/playdata.py`)
+- `scan_games()` now upserts scanned games into the DB, marks unseen games as `installed=0`, and returns ALL games (installed + missing).
+- `playdata.py` simplified to settings-only (game records now in SQLite).
+- Missing games remain in the library with full history (playtime, cover, saves).
+
+### Launcher Integration (`core/launcher.py`)
+- After `proc.wait()`, calls `savesync.sync_after_session()` to backup save states + game saves.
+- Before launch with `load_state`, calls `savesync.restore_save_state()` to restore from backup if needed.
+
+### UI Changes (`ui/draw_grid.py`, `ui/draw_hero.py`)
+- Grid: "ROM MISSING" badge (COL_DESTRUCTIVE fill) + dimmed cover (120-alpha black overlay) for missing games.
+- Hero: "ROM Missing - re-add the ROM to play" meta text + greyed-out disabled PLAY button.
+
+### App Orchestrator (`app.py`)
+- DB init + migration on startup.
+- `_recents()` → `database.get_recents(16)`.
+- `game_stats()` → `database.get_game_stats(game_id)`.
+- `launch_selected()` → blocks launch for missing-ROM games with toast.
+- `_confirm_launch()` → `database.add_playtime(game_id, elapsed)` + `_refresh_games_from_db()`.
+
+### Cover Generator (`covers/generator.py`)
+- Skips missing-ROM games (no ISO to extract from).
+
+### Config (`core/config.py`)
+- Added `get_data_dir()`, `get_db_path()`, `get_save_states_dir()`, `get_saves_dir()`, `get_screenshots_dir()`, `get_backup_dir()`.
+- Auto-creates `Data/` subdirectory tree.
+
+### Infrastructure
+- `.gitignore` — added `Data/` (private user data, never committed).
+- `wiki/user_data.md` — NEW page documenting the full user-data protection system.
+
+### Files Modified
+- `core/database.py` (NEW), `core/savesync.py` (NEW), `core/savestates.py`, `core/scanner.py`, `core/playdata.py`, `core/launcher.py`, `core/config.py`, `covers/generator.py`, `ui/draw_grid.py`, `ui/draw_hero.py`, `app.py`, `.gitignore`, `wiki/user_data.md` (NEW), `wiki/log.md`, `wiki/index.md`, `wiki/file_structure.md`, `wiki/roadmap.md`
+
+### Verification
+- `python -m py_compile` on all 10 modified .py files — clean
+- DB smoke test: init, migration, upsert, add_playtime, get_recents, mark_missing, update_save_state_paths — all passed
+- Savesync smoke test: backup dir creation for SaveStates and Saves — passed
+
 ## [2026-07-23] bugfix | pygame KeyError: 2 (JOYDEVICEADDED invalid device_index) — crash on gamepad reconnect
 
 Fixed a crash (`KeyError: 2` → `SystemError: <built-in function get> returned a result with an exception set`) that occurred when:
@@ -90,7 +217,7 @@ Audited the full codebase and fixed 6 real behavioral bugs found by reading ever
   pattern matches the real PCSX2 filename layout.
 
 ## [2026-07-19] system | Add mandatory testing rule before git commit + push
-Added a new top-level section "Mandatory Testing Before Git Commit & Push (Applies to EVERY change)" to `.agents/AGENTS.md` and wove it into the existing "Mandatory Change Workflow" as a new step 2 (between wiki update and `git add`).
+Added a new top-level section "Mandatory Testing Before Git Commit & Push (Applies to EVERY change)" to `.agent/AGENTS.md` and wove it into the existing "Mandatory Change Workflow" as a new step 2 (between wiki update and `git add`).
 
 ### The rule (4 steps)
 1. **Test before staging** — run a real verification step that exercises the changed code (not just `py_compile` for Python; offscreen render test for UI; JSON/Markdown parse check for wiki/config). If you don't know what test to run, ASK the user.
@@ -142,7 +269,7 @@ Audited every button and draw call across all 13 files in `ui/` against the UI D
 ## [2026-07-19] doc | Establish UI Design Philosophy as a mandatory skill
 Created a single source of truth for Game Machine's visual design and made it a loadable opencode skill + a wiki page + a mandatory workflow rule in `AGENTS.md`. The launch-game 3-option popup (`ui/draw_popup.py::_draw_launch_menu_body`) is the canonical reference implementation.
 
-### New skill: `.agents/skills/ui-design-philosophy/SKILL.md`
+### New skill: `.agent/skills/ui-design-philosophy/SKILL.md`
 - Auto-discoverable opencode skill (`name: ui-design-philosophy`) that enforces the design workflow before any UI file is touched.
 - Lists when to load it (any UI/draw change), the 10-step workflow, hard rules, and a copy-from table of canonical reference implementations.
 - Loaded via the same mechanism as the existing `wiki-maintainer` skill.
@@ -159,7 +286,7 @@ A prescriptive, 14-section design system covering:
 - §5 Popup anatomy — overlay alpha 160, `COL_PANEL` + `border_radius=14`, 3px accent top glow, 1px `mix(COL_BG, accent, 0.4)` border, `ease_out` scale-in over 200–220ms, centered `f_popup_title` 24px from top, `f_mono` hint 22px from bottom. Includes an ASCII diagram of the launch popup.
 - §6 Console chip pattern, §7 Hint/footer pattern, §8 Iconography (geometric primitives only, no unicode glyphs), §9 Spacing & layout, §10 Animation principles (`ease_out`, never linear for organic motion), §11 Input binding conventions (all four modalities wired), §12 MUST / MUST NOT quick reference, §13 Reference implementations table, §14 New-screen checklist.
 
-### Updated: `.agents/AGENTS.md`
+### Updated: `.agent/AGENTS.md`
 - Added a new top-level section "Mandatory UI Design Workflow (Applies to ANY UI / visual change)" with 10 enforceable steps that must run before any `ui/` change is committed.
 - Updated "Related Resources" to link the new skill and wiki page alongside the existing wiki-maintainer skill.
 
@@ -276,7 +403,7 @@ Wired up the new rect in `app.py`:
 Verified: `python -m py_compile` clean; hint width (366px) fits inside the 420px panel.
 
 ## [2026-07-18] config | Enforce mandatory wiki-update + commit + push workflow
-Rewrote `.agents/AGENTS.md` to make the change workflow explicit and mandatory for every modification - no matter how small. Previously the rules for wiki updates and git commit/push were stated separately and were easy to skip on tiny edits. The new "Mandatory Change Workflow" section consolidates them into a single ordered checklist that applies to every file touched:
+Rewrote `.agent/AGENTS.md` to make the change workflow explicit and mandatory for every modification - no matter how small. Previously the rules for wiki updates and git commit/push were stated separately and were easy to skip on tiny edits. The new "Mandatory Change Workflow" section consolidates them into a single ordered checklist that applies to every file touched:
 
 1. Update `wiki/log.md` (top entry) and any affected wiki pages.
 2. `git add` only the intended files (never `playtime.json` or `covers/`).
@@ -328,7 +455,7 @@ Verification: `python -m py_compile` clean across all 27 modules; `clean_name()`
 
 ## [2026-07-18] config | Reverse Wiki Log Order
 - Updated the chronological order of [log.md](file:///c:/Users/jadam/Desktop/Game-Machine/wiki/log.md) to put the latest entries on top.
-- Modified custom workspace rules ([AGENTS.md](file:///c:/Users/jadam/Desktop/Game-Machine/.agents/AGENTS.md)) and the [wiki-maintainer](file:///c:/Users/jadam/Desktop/Game-Machine/.agents/skills/wiki-maintainer/SKILL.md) skill to ensure future operations insert logs at the top.
+- Modified custom workspace rules ([AGENTS.md](file:///c:/Users/jadam/Desktop/Game-Machine/.agent/AGENTS.md)) and the [wiki-maintainer](file:///c:/Users/jadam/Desktop/Game-Machine/.agent/skills/wiki-maintainer/SKILL.md) skill to ensure future operations insert logs at the top.
 
 ## [2026-07-18] doc | Professional README Update
 - Created a comprehensive and professional README.md outlining Game Machine features, portable directory layouts, internal components, custom decrypter, covers generator, keyboard/gamepad setup, and future development guidelines.
@@ -367,5 +494,5 @@ folder — Game Machine now launches PS3 ISOs directly like all other emulators.
 
 ## [2026-07-18] system | Wiki Initialized
 - Initialized directory structure for the LLM Wiki (`sources/` and `wiki/`).
-- Created custom workspace rules (`.agents/AGENTS.md`) and wiki-maintainer skill (`.agents/skills/wiki-maintainer/SKILL.md`).
+- Created custom workspace rules (`.agent/AGENTS.md`) and wiki-maintainer skill (`.agent/skills/wiki-maintainer/SKILL.md`).
 

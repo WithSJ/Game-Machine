@@ -74,5 +74,5 @@ When extending the UI, copy from these files (also listed in §13 of the philoso
 ## 🔗 Related resources
 
 - The full philosophy: [`wiki/ui_design_philosophy.md`](file:///c:/Users/jadam/Desktop/Game-Machine/wiki/ui_design_philosophy.md)
-- Workspace rules: [`.agents/AGENTS.md`](file:///c:/Users/jadam/Desktop/Game-Machine/.agents/AGENTS.md)
-- Wiki maintainer skill: [`wiki-maintainer`](file:///c:/Users/jadam/Desktop/Game-Machine/.agents/skills/wiki-maintainer/SKILL.md)
+- Workspace rules: [`.agent/AGENTS.md`](file:///c:/Users/jadam/Desktop/Game-Machine/.agent/AGENTS.md)
+- Wiki maintainer skill: [`wiki-maintainer`](file:///c:/Users/jadam/Desktop/Game-Machine/.agent/skills/wiki-maintainer/SKILL.md)
