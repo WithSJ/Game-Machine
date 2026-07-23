@@ -2,10 +2,9 @@
 GAME MACHINE - Launch confirmation popup drawing.
 
 Three popup types share this surface:
-  - "launch"       : 2-option YES/NO prompt (used when no save state exists)
-  - "decrypt"      : 2-option YES/NO prompt with PS3-encryption warning
-  - "launch_menu" : 3-option vertical menu (LOAD LAST SAVE STATE / JUST PLAY / CANCEL)
-                    shown when a save state was found for the game.
+  - "launch"        : 2-option YES/NO prompt (used when no save state exists)
+  - "launch_menu"  : 3-option vertical menu (LOAD LAST SAVE STATE / JUST PLAY / CANCEL)
+                      shown when a save state was found for the game.
 """
 import math
 import pygame
@@ -27,13 +26,8 @@ ACT_CANCEL = "cancel"
 
 
 def draw_popup(gm, now):
-    """Draw the launch confirmation popup or decryption progress popup if active."""
+    """Draw the launch confirmation popup."""
     scr = gm.screen
-
-    # Handle active decryption rendering first
-    if getattr(gm, "decrypting_active", False) and gm.popup_game:
-        draw_decryption_popup(gm, now)
-        return
 
     if not gm.popup_active or not gm.popup_game:
         return
@@ -54,8 +48,6 @@ def draw_popup(gm, now):
     # Popup dimensions vary per type
     if p_type == "launch_menu":
         pw, ph = 520, 380
-    elif p_type == "decrypt":
-        pw, ph = 460, 240
     else:
         pw, ph = 460, 220
 
@@ -74,9 +66,7 @@ def draw_popup(gm, now):
         pygame.draw.rect(scr, mix(COL_BG, accent, 0.4), popup_r, 1, border_radius=14)
 
         # Title
-        if p_type == "decrypt":
-            title_text = "DECRYPT GAME?"
-        elif p_type == "launch_menu":
+        if p_type == "launch_menu":
             title_text = "LAUNCH GAME?"
         else:
             title_text = "LAUNCH GAME?"
@@ -97,9 +87,7 @@ def draw_popup(gm, now):
         pygame.draw.rect(scr, mix(COL_BG, accent, 0.25), chip_r, 1, border_radius=4)
         scr.blit(chip_s, chip_s.get_rect(center=chip_r.center))
 
-        if p_type == "decrypt":
-            _draw_decrypt_body(gm, scr, popup_r, pw, accent)
-        elif p_type == "launch_menu":
+        if p_type == "launch_menu":
             _draw_launch_menu_body(gm, scr, popup_r, pw, ph, accent)
         else:
             _draw_launch_body(gm, scr, popup_r, pw, accent)
@@ -159,19 +147,7 @@ def _draw_launch_body(gm, scr, popup_r, pw, accent):
     scr.blit(hint, (popup_r.x + (pw - hint.get_width()) // 2, popup_r.bottom - 22))
 
 
-def _draw_decrypt_body(gm, scr, popup_r, pw, accent):
-    """2-option YES/NO popup body with a PS3-encryption warning."""
-    warn_s = gm.f_small.render("This PS3 game is encrypted. Decrypt it now?", True, COL_BTN_Y)
-    scr.blit(warn_s, (popup_r.x + (pw - warn_s.get_width()) // 2, popup_r.y + 124))
 
-    sep_y = popup_r.y + 152
-    pygame.draw.line(scr, COL_CARD_BORDER, (popup_r.x + 24, sep_y), (popup_r.right - 24, sep_y))
-
-    btn_w, btn_h = 140, 42
-    btn_gap = 24
-    total_w = btn_w * 2 + btn_gap
-    bx = popup_r.x + (pw - total_w) // 2
-    by = popup_r.y + 168
 
     # YES button
     yes_r = pygame.Rect(bx, by, btn_w, btn_h)
@@ -206,6 +182,9 @@ def _draw_decrypt_body(gm, scr, popup_r, pw, accent):
 
     hint = gm.f_mono.render("A = Confirm    B / Esc = Cancel    \u25c4 \u25ba = Switch", True, COL_DIMMER)
     scr.blit(hint, (popup_r.x + (pw - hint.get_width()) // 2, popup_r.bottom - 22))
+
+
+
 
 
 def _draw_launch_menu_body(gm, scr, popup_r, pw, ph, accent):
@@ -327,79 +306,7 @@ def _short_state_name(path):
     return name
 
 
-def draw_decryption_popup(gm, now):
-    """Draw the decryption progress/error popup."""
-    scr = gm.screen
-    g = gm.popup_game
-    accent = gm.colors.get(g["console"], gm.accent())
 
-    # Dark overlay
-    overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
-    overlay.fill((0, 0, 0, 160))
-    scr.blit(overlay, (0, 0))
 
-    # Dimensions
-    pw, ph = 500, 240
-    px = (SCREEN_W - pw) // 2
-    py = (SCREEN_H - ph) // 2
-    popup_r = pygame.Rect(px, py, pw, ph)
 
-    # Panel background
-    pygame.draw.rect(scr, COL_PANEL, popup_r, border_radius=14)
-    # Accent glow line at top
-    pygame.draw.rect(scr, accent, (popup_r.x, popup_r.y, pw, 3), border_radius=14)
-    # Border
-    pygame.draw.rect(scr, mix(COL_BG, accent, 0.4), popup_r, 1, border_radius=14)
 
-    if gm.decryption_error:
-        # Title: DECRYPTION FAILED
-        title_s = gm.f_popup_title.render("DECRYPTION FAILED", True, COL_BTN_B)
-        scr.blit(title_s, (popup_r.x + (pw - title_s.get_width()) // 2, popup_r.y + 24))
-
-        # Game name
-        name_s = gm.f_popup_name.render(g["name"], True, COL_TEXT)
-        scr.blit(name_s, (popup_r.x + (pw - name_s.get_width()) // 2, popup_r.y + 64))
-
-        # Error text wrapped
-        from ui.helpers import wrap_lines
-        err_lines = wrap_lines(gm.decryption_error, gm.f_small, pw - 60, max_lines=3)
-        ty = popup_r.y + 104
-        for line in err_lines:
-            err_s = gm.f_small.render(line, True, COL_BTN_B)
-            scr.blit(err_s, (popup_r.x + (pw - err_s.get_width()) // 2, ty))
-            ty += 16
-
-        # CLOSE button
-        btn_w, btn_h = 140, 36
-        btn_r = pygame.Rect(popup_r.x + (pw - btn_w) // 2, popup_r.bottom - 54, btn_w, btn_h)
-        gm.decryption_close_rect = btn_r
-        parallelogram(scr, btn_r, COL_BTN_B, cut=6)
-        btn_s = gm.f_popup_btn.render("CLOSE", True, COL_BG)
-        scr.blit(btn_s, btn_s.get_rect(center=btn_r.center))
-
-    else:
-        # Title: DECRYPTING...
-        title_s = gm.f_popup_title.render("DECRYPTING GAME...", True, accent)
-        scr.blit(title_s, (popup_r.x + (pw - title_s.get_width()) // 2, popup_r.y + 24))
-
-        # Game name
-        name_s = gm.f_popup_name.render(g["name"], True, COL_TEXT)
-        scr.blit(name_s, (popup_r.x + (pw - name_s.get_width()) // 2, popup_r.y + 64))
-
-        # Status text
-        status_s = gm.f_small.render(gm.decryption_status, True, COL_DIM)
-        scr.blit(status_s, (popup_r.x + (pw - status_s.get_width()) // 2, popup_r.y + 110))
-
-        # Premium loading bar
-        bar_r = pygame.Rect(popup_r.x + 50, popup_r.y + 148, pw - 100, 6)
-        pygame.draw.rect(scr, COL_CARD_BORDER, bar_r, border_radius=3)
-
-        # Pulsing active bar
-        pulse_w = 100
-        pulse_x = bar_r.x + int((bar_r.w - pulse_w) * (0.5 + 0.5 * math.sin(now / 180.0)))
-        pulse_r = pygame.Rect(pulse_x, bar_r.y, pulse_w, bar_r.h)
-        pygame.draw.rect(scr, accent, pulse_r, border_radius=3)
-
-        # Keep warning in mind
-        warn_s = gm.f_mono.render("Please do not close Game Machine or turn off PC.", True, COL_DIMMER)
-        scr.blit(warn_s, (popup_r.x + (pw - warn_s.get_width()) // 2, popup_r.bottom - 22))

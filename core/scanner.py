@@ -208,9 +208,11 @@ def scan_games(consoles):
         for filename in sorted(os.listdir(folder)):
             ext = os.path.splitext(filename)[1].lower()
             if ext in cfg["extensions"]:
-                games.append({
+                game_path = os.path.join(folder, filename)
+                game = {
                     "name": clean_name(filename),
-                    "path": os.path.join(folder, filename),
+                    "path": game_path,
                     "console": console_name,
-                })
+                }
+                games.append(game)
     return games

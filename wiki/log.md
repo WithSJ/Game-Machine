@@ -337,6 +337,24 @@ Verification: `python -m py_compile` clean across all 27 modules; `clean_name()`
 - Updated `.gitignore` to exclude `playtime.json` from git tracking.
 - Untracked `playtime.json` from the repository using `git rm --cached` to keep it local-only.
 
+## [2026-07-24] change | Removed automatic PS3 ISO decryption feature
+
+PS3 ISO encryption/decryption automation has been **removed from Game Machine**.
+Users must manually decrypt their PS3 ISOs before placing them in the RPCS3 ROMs
+folder — Game Machine now launches PS3 ISOs directly like all other emulators.
+
+**What was removed:**
+- `core/decrypter.py` — Entire module (PS3 ISO detection, `.dkey` lookup/copy, background prep thread)
+- `app.py` — All PS3 prep state, `_start_ps3_prep()`, `_show_remove_dkey_prompt()`, `_remove_dkey_and_launch()`, PS3 prep event handling, and main-loop done-check
+- `core/scanner.py` — `is_ps3_iso_encrypted()` function and scan-time encryption flag
+- `ui/draw_popup.py` — `"decrypt"` and `"remove_dkey"` popup types, PS3 prep popup, remove-dkey popup, and all associated drawing functions
+
+**Files Modified:**
+- `app.py`
+- `core/decrypter.py`
+- `core/scanner.py`
+- `ui/draw_popup.py`
+
 ## [2026-07-18] ingest | Game-Machine-Documentation.md
 - Extracted and structured the monolithic Game-Machine-Documentation.md into 6 focused wiki pages:
   - [Architecture](file:///c:/Users/jadam/Desktop/Game-Machine/wiki/architecture.md)
