@@ -197,6 +197,20 @@ def _draw_folders_tab(gm, scr, content_r):
             y += row_h + 8
 
     y += 8
+
+    # Emulators folder section
+    emu_folder = gm.settings.get("emulators_folder", "")
+    if emu_folder and os.path.isdir(emu_folder):
+        _draw_option_row(gm, scr, content_r.x, y, row_w, row_h,
+                         "Emulators Folder", os.path.basename(emu_folder), COL_BTN_Y,
+                         "change_emulators_folder")
+        y += row_h + 8
+    else:
+        _draw_add_button(gm, scr, content_r.x, y, row_w, row_h,
+                         "+ SET EMULATORS FOLDER", "change_emulators_folder")
+        y += row_h + 8
+
+    y += 8
     _draw_add_button(gm, scr, content_r.x, y, row_w, row_h, "+ ADD FOLDER", "add_folder")
 
 

@@ -507,6 +507,8 @@ class GameMachine:
             self._settings_add_folder()
         elif action == "add_console":
             self._settings_add_console()
+        elif action == "change_emulators_folder":
+            self._settings_change_emulators_folder()
         elif action.startswith("delete_folder:"):
             idx = int(action.split(":")[1])
             if 0 <= idx < len(self.folders):
@@ -545,6 +547,12 @@ class GameMachine:
             sys.exit(0)
         elif action == "exit_gm":
             self.running = False
+
+    def _settings_change_emulators_folder(self):
+        from ui.draw_setup import add_emulators_folder_dialog
+        add_emulators_folder_dialog(self)
+        self._settings_rescan()
+        self.settings_sel = 0
 
     def _settings_rescan(self):
         """Re-save settings, refresh config paths, and re-scan games."""
@@ -946,7 +954,20 @@ class GameMachine:
     # ---------------- drawing ----------------
     def draw(self, now):
         if getattr(self, "needs_setup", False):
-            draw_setup(self, now)
+            # Check if auto-setup is running
+            if getattr(self, "auto_setup", None) and self.auto_setup.active:
+                from ui.draw_setup import draw_auto_setup_progress
+                draw_auto_setup_progress(self, now)
+            elif getattr(self, "auto_setup", None) and self.auto_setup.finished:
+                if self.auto_setup.success:
+                    from ui.draw_setup import draw_setup_complete
+                    draw_setup_complete(self, now)
+                else:
+                    from ui.draw_setup import draw_setup_error
+                    draw_setup_error(self, now)
+            else:
+                from ui.draw_setup import draw_setup
+                draw_setup(self, now)
             draw_toast(self, now)
             return
 
@@ -991,94 +1012,141 @@ class GameMachine:
         draw_settings(self, now)
 
     def handle_setup_event(self, e):
-        # Handle help overlay dismiss
-        if getattr(self, "setup_help_active", False):
-            if e.type == pygame.KEYDOWN:
-                self.setup_help_active = False
-            elif e.type == pygame.JOYBUTTONDOWN:
-                self.setup_help_active = False
-            elif e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
-                # Only the [X] close button dismisses via mouse click.
-                # The setup_help_close_rect is set in draw_setup_help_modal().
-                close_rect = getattr(self, "setup_help_close_rect", None)
-                if close_rect is not None and close_rect.collidepoint(e.pos):
-                    self.setup_help_active = False
-            elif e.type == pygame.FINGERUP:
-                # Only count as a tap (dismiss) if the finger didn't drag
-                # and it landed on the close button.
-                if self.touch_start is not None and not getattr(self, 'touch_moved', False):
-                    w, h = self.screen.get_size()
-                    pos = (e.x * w, e.y * h)
-                    close_rect = getattr(self, "setup_help_close_rect", None)
-                    if close_rect is not None and close_rect.collidepoint(pos):
-                        self.setup_help_active = False
+        # If auto-setup is running, only allow ESC to cancel
+        if getattr(self, "auto_setup", None) and self.auto_setup.active:
+            if e.type == pygame.KEYDOWN and e.key == pygame.K_ESCAPE:
+                self.auto_setup = None  # Cancel setup
             return
 
-        # Keyboard navigation
+        # If auto-setup finished with error, handle retry/exit
+        if getattr(self, "auto_setup", None) and self.auto_setup.finished and not self.auto_setup.success:
+            if e.type == pygame.KEYDOWN:
+                if e.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE, pygame.K_r):
+                    self._start_auto_setup()  # Retry
+                elif e.key == pygame.K_ESCAPE:
+                    pygame.quit()
+                    sys.exit()
+            elif e.type == pygame.JOYBUTTONDOWN:
+                if e.button == 0:  # A = Retry
+                    self._start_auto_setup()
+                elif e.button == 1:  # B = Exit
+                    pygame.quit()
+                    sys.exit()
+            elif e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
+                if hasattr(self, 'setup_retry_rect') and self.setup_retry_rect.collidepoint(e.pos):
+                    self._start_auto_setup()
+                elif hasattr(self, 'setup_exit_rect') and self.setup_exit_rect.collidepoint(e.pos):
+                    pygame.quit()
+                    sys.exit()
+            return
+
+        # If auto-setup finished successfully, any key continues
+        if getattr(self, "auto_setup", None) and self.auto_setup.finished and self.auto_setup.success:
+            if e.type in (pygame.KEYDOWN, pygame.JOYBUTTONDOWN, pygame.MOUSEBUTTONDOWN, pygame.FINGERUP):
+                self.needs_setup = False
+                self.auto_setup = None
+            return
+
+        # Normal setup screen (2 buttons: Setup Game Machine, Exit)
         if e.type == pygame.KEYDOWN:
             if e.key in (pygame.K_UP, pygame.K_w):
-                self.setup_sel = (self.setup_sel - 1) % 5
+                self.setup_sel = (self.setup_sel - 1) % 2
             elif e.key in (pygame.K_DOWN, pygame.K_s):
-                self.setup_sel = (self.setup_sel + 1) % 5
+                self.setup_sel = (self.setup_sel + 1) % 2
             elif e.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
                 self._setup_confirm_action()
             elif e.key == pygame.K_ESCAPE:
                 pygame.quit()
                 sys.exit()
 
-        # Gamepad navigation
         elif e.type == pygame.JOYBUTTONDOWN:
-            if e.button == 0:  # A button
+            if e.button in (11, 12):  # D-pad up/down
+                pass  # handled by axis
+            elif e.button == 0:  # A = Confirm
                 self._setup_confirm_action()
-            elif e.button == 1:  # B button
+            elif e.button == 1:  # B = Exit
                 pygame.quit()
                 sys.exit()
 
-        # Mouse Motion / Hover
         elif e.type == pygame.MOUSEMOTION:
-            for idx, label, enabled, rect in getattr(self, "setup_menu_rects", []):
-                if rect.collidepoint(e.pos) and enabled:
-                    self.setup_sel = idx
+            # Check hover for both buttons
+            if hasattr(self, 'setup_btn_rect') and self.setup_btn_rect.collidepoint(e.pos):
+                self.setup_sel = 0
+            elif hasattr(self, 'exit_btn_rect') and self.exit_btn_rect.collidepoint(e.pos):
+                self.setup_sel = 1
 
-        # Mouse Click
         elif e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
-            # Check delete buttons on the left
-            for idx, kind, val, rect in getattr(self, "setup_delete_rects", []):
-                if rect.collidepoint(e.pos):
-                    if kind == "folder":
-                        if val in self.folders:
-                            self.folders.remove(val)
-                            self.toast = f"Removed Folder: {os.path.basename(val)}"
-                            self.toast_until = pygame.time.get_ticks() + 2000
-                    elif kind == "console":
-                        cname = val.split(":")[0].strip()
-                        if cname in self.custom_consoles:
-                            del self.custom_consoles[cname]
-                            self.toast = f"Removed Console: {cname}"
-                            self.toast_until = pygame.time.get_ticks() + 2000
-                    return
+            if hasattr(self, 'setup_btn_rect') and self.setup_btn_rect.collidepoint(e.pos):
+                self.setup_sel = 0
+                self._setup_confirm_action()
+                return
+            elif hasattr(self, 'exit_btn_rect') and self.exit_btn_rect.collidepoint(e.pos):
+                self.setup_sel = 1
+                self._setup_confirm_action()
+                return
 
-            # Check menu buttons on the right
-            for idx, label, enabled, rect in getattr(self, "setup_menu_rects", []):
-                if rect.collidepoint(e.pos) and enabled:
-                    self.setup_sel = idx
-                    self._setup_confirm_action()
-                    return
+    def _start_auto_setup(self):
+        """Start the automatic setup process."""
+        from ui.draw_setup import pick_directory, AutoSetupThread
+        
+        # Temporarily exit fullscreen for folder dialog
+        if self.fullscreen:
+            pygame.display.set_mode((SCREEN_W, SCREEN_H))
+        
+        root_folder = pick_directory(title="Select Game Machine Root Folder (will create all subfolders)")
+        
+        if self.fullscreen:
+            self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H), pygame.FULLSCREEN)
+        
+        if root_folder:
+            norm_path = os.path.normpath(root_folder)
+            self.auto_setup = AutoSetupThread(self, norm_path)
+            self.auto_setup.start()
+        else:
+            self.toast = "Setup cancelled - no folder selected"
+            self.toast_until = pygame.time.get_ticks() + 2000
 
     def _setup_confirm_action(self):
-        from ui.draw_setup import add_gm_folder_dialog, add_custom_console_dialog
-        if self.setup_sel == 0:
-            add_gm_folder_dialog(self)
-        elif self.setup_sel == 1:
-            add_custom_console_dialog(self)
-        elif self.setup_sel == 2:
-            self.setup_help_active = True
-        elif self.setup_sel == 3:
-            if self.folders or self.custom_consoles:
-                self.finish_setup()
-        elif self.setup_sel == 4:
+        if self.setup_sel == 0:  # Setup Game Machine
+            self._start_auto_setup()
+        elif self.setup_sel == 1:  # Exit
             pygame.quit()
             sys.exit()
+
+    def _start_auto_setup(self):
+        """Start the fully automatic setup process."""
+        # Ask for root folder
+        from ui.draw_setup import pick_directory
+        if self.fullscreen:
+            pygame.display.set_mode((SCREEN_W, SCREEN_H))
+        path = pick_directory(title="Select Game Machine Root Folder (will create emulators/, PSP_iso/, PS2_iso/, PS3_iso/)")
+        if self.fullscreen:
+            self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H), pygame.FULLSCREEN)
+        
+        if not path:
+            self.toast = "Setup cancelled - no folder selected"
+            self.toast_until = pygame.time.get_ticks() + 2000
+            return
+        
+        norm_path = os.path.normpath(path)
+        self.folders = [norm_path]
+        self.settings["folders"] = [norm_path]
+        
+        # Start auto-setup thread
+        from ui.draw_setup import AutoSetupThread
+        self.auto_setup = AutoSetupThread(self, norm_path)
+        self.auto_setup.start()
+
+    def _check_auto_setup_complete(self):
+        """Check if auto-setup finished and transition to dashboard."""
+        if getattr(self, "auto_setup", None) and self.auto_setup.finished:
+            if self.auto_setup.success:
+                self.finish_setup()
+            else:
+                error_msg = self.auto_setup.error if self.auto_setup.error else "Setup failed"
+                self.auto_setup = None  # Will show error screen on next draw
+                self.toast = f"Setup failed: {error_msg}"
+                self.toast_until = pygame.time.get_ticks() + 5000
 
     def finish_setup(self):
         self.settings["folders"] = self.folders
@@ -1120,6 +1188,10 @@ class GameMachine:
                 self.handle_event(e)
             self.update_gamepad(now)
             self.update_scroll()
+
+            # Check if auto-setup completed
+            if getattr(self, "needs_setup", False):
+                self._check_auto_setup_complete()
 
             # Process cover generation queue (main thread only - pygame safe)
             process_cover_results(self._cover_cache)
